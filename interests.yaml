@@ -1,0 +1,26 @@
+description: |
+  I'm interested in AI/ML engineering, particularly LLM applications,
+  AI agents, and developer tools. I also follow open source projects
+  and startup news in the AI space.
+
+topics:
+  - name: "AI/ML Engineering"
+    weight: 10
+    keywords: [LLM, transformer, fine-tuning, RAG, embeddings]
+  - name: "AI Agents"
+    weight: 9
+    keywords: [autonomous agents, tool use, multi-agent, agentic]
+  - name: "Developer Tools"
+    weight: 7
+    keywords: [CLI, IDE, devtools, DX, SDK]
+  - name: "Open Source"
+    weight: 6
+    keywords: [github, open-source, FOSS, community]
+  - name: "Startups"
+    weight: 5
+    keywords: [funding, launch, YC, seed round]
+
+exclude:
+  - cryptocurrency/blockchain hype
+  - celebrity news
+  - sports

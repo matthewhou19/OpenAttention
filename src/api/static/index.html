@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI RSS Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #242736;
+    --border: #2e3144;
+    --text: #e4e4e7;
+    --text2: #a1a1aa;
+    --accent: #6366f1;
+    --accent2: #818cf8;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* --- Header --- */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+
+  .header h1 { font-size: 18px; font-weight: 600; }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .stats {
+    display: flex;
+    gap: 14px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  .stats span { display: flex; align-items: center; gap: 3px; }
+  .stats .num { color: var(--accent2); font-weight: 600; }
+
+  .filters {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .filters select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 8px;
+    border-radius: 5px;
+    font-size: 12px;
+  }
+
+  .filters select:focus { outline: none; border-color: var(--accent); }
+
+  .filters label {
+    font-size: 10px;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-right: -4px;
+  }
+
+  /* --- Columns layout --- */
+  .board {
+    flex: 1;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 16px 12px;
+    gap: 12px;
+    scroll-behavior: smooth;
+  }
+
+  .board::-webkit-scrollbar { height: 6px; }
+  .board::-webkit-scrollbar-track { background: var(--bg); }
+  .board::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .column {
+    min-width: 340px;
+    max-width: 380px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .column-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .col-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  .col-name {
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .col-count {
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--surface2);
+    padding: 1px 7px;
+    border-radius: 8px;
+    margin-left: auto;
+  }
+
+  .column-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+  }
+
+  .column-body::-webkit-scrollbar { width: 4px; }
+  .column-body::-webkit-scrollbar-track { background: transparent; }
+  .column-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* --- Article cards --- */
+  .article-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    transition: border-color 0.15s;
+  }
+
+  .article-card:hover { border-color: var(--accent); }
+
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+    margin-bottom: 4px;
+  }
+
+  .card-title a { color: var(--text); text-decoration: none; }
+  .card-title a:hover { color: var(--accent2); }
+
+  .card-scores {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+
+  .score-pill {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--surface);
+  }
+
+  .score-pill.high { color: var(--green); }
+  .score-pill.mid { color: var(--yellow); }
+  .score-pill.low { color: var(--red); }
+
+  .card-summary {
+    font-size: 12px;
+    color: var(--text2);
+    margin-bottom: 8px;
+    line-height: 1.4;
+  }
+
+  .card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .card-meta {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .source-tag {
+    font-size: 9px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--accent);
+    color: white;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+
+  .date-text { font-size: 10px; color: var(--text2); white-space: nowrap; }
+
+  .feedback-btns {
+    display: flex;
+    gap: 3px;
+    flex-shrink: 0;
+  }
+
+  .feedback-btns button {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 2px 7px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 10px;
+    transition: all 0.15s;
+  }
+
+  .feedback-btns button:hover { border-color: var(--accent); color: var(--text); }
+  .feedback-btns button.active-like { background: #166534; border-color: var(--green); color: white; }
+  .feedback-btns button.active-dislike { background: #7f1d1d; border-color: var(--red); color: white; }
+  .feedback-btns button.active-save { background: #854d0e; border-color: var(--yellow); color: white; }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 16px;
+    color: var(--text2);
+    font-size: 13px;
+  }
+
+  .loading { text-align: center; padding: 40px; color: var(--text2); }
+
+  /* Empty column placeholder */
+  .column.empty { opacity: 0.5; }
+  .column.empty .column-body { display: flex; align-items: center; justify-content: center; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>AI RSS</h1>
+  <div class="header-right">
+    <div class="stats" id="stats"></div>
+    <div class="filters">
+      <label>Score</label>
+      <select id="minScore" onchange="loadArticles()">
+        <option value="0">All</option>
+        <option value="5">5+</option>
+        <option value="7" selected>7+</option>
+        <option value="8">8+</option>
+        <option value="9">9+</option>
+      </select>
+      <label>Source</label>
+      <select id="feedFilter" onchange="loadArticles()">
+        <option value="">All</option>
+      </select>
+    </div>
+  </div>
+</div>
+
+<div class="board" id="board">
+  <div class="loading">Loading...</div>
+</div>
+
+<script>
+const API = '/api';
+
+const TOPIC_DEFS = [
+  { name: 'AI Agents',         icon: '\u{1F916}', color: '#6366f1', match: ['ai agents', 'autonomous', 'agentic', 'personal agents', 'multi-agent', 'agent'] },
+  { name: 'AI/ML Engineering', icon: '\u26A1',     color: '#8b5cf6', match: ['llm', 'transformer', 'fine-tuning', 'rag', 'embeddings', 'ai/ml', 'machine learning', 'model', 'code generation', 'reasoning'] },
+  { name: 'AI Industry',       icon: '\u{1F3E2}', color: '#0ea5e9', match: ['ai industry', 'openai', 'anthropic', 'google', 'ai safety', 'chatgpt', 'global adoption', 'ai impact', 'ai ethics'] },
+  { name: 'Developer Tools',   icon: '\u{1F6E0}', color: '#22c55e', match: ['developer tools', 'cli', 'ide', 'devtools', 'sdk', 'infrastructure', 'web development', 'css', 'database'] },
+  { name: 'Open Source',       icon: '\u{1F4E6}', color: '#f97316', match: ['open source', 'github', 'foss', 'community'] },
+  { name: 'Startups',          icon: '\u{1F680}', color: '#ec4899', match: ['startups', 'funding', 'launch', 'startup'] },
+  { name: 'Developer Life',    icon: '\u{1F4AD}', color: '#14b8a6', match: ['developer experience', 'productivity', 'career', 'cognitive load', 'burnout', 'software engineering'] },
+];
+
+function classifyArticle(article) {
+  if (!article.score || !article.score.topics) return 'Other';
+  const tags = article.score.topics.map(t => t.toLowerCase());
+  const reason = (article.score.reason || '').toLowerCase();
+  for (const def of TOPIC_DEFS) {
+    for (const kw of def.match) {
+      if (tags.some(t => t.includes(kw)) || reason.includes(kw)) return def.name;
+    }
+  }
+  return 'Other';
+}
+
+function getTopicDef(name) {
+  return TOPIC_DEFS.find(d => d.name === name) || { name, icon: '\u{1F4C4}', color: '#71717a', match: [] };
+}
+
+async function loadStats() {
+  const res = await fetch(`${API}/stats`);
+  const data = await res.json();
+  document.getElementById('stats').innerHTML = `
+    <span>Feeds <span class="num">${data.feeds}</span></span>
+    <span>Articles <span class="num">${data.articles}</span></span>
+    <span>Scored <span class="num">${data.scored}</span></span>
+  `;
+}
+
+async function loadFeeds() {
+  const res = await fetch(`${API}/feeds`);
+  const feeds = await res.json();
+  const sel = document.getElementById('feedFilter');
+  feeds.forEach(f => {
+    const opt = document.createElement('option');
+    opt.value = f.id;
+    opt.textContent = f.title || f.url;
+    sel.appendChild(opt);
+  });
+}
+
+function scorePillClass(val) {
+  if (val >= 7) return 'high';
+  if (val >= 4) return 'mid';
+  return 'low';
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffH = Math.floor((now - d) / 3600000);
+  if (diffH < 1) return 'now';
+  if (diffH < 24) return `${diffH}h`;
+  if (diffH < 48) return '1d';
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD}d`;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function renderCard(a) {
+  const s = a.score;
+  return `
+    <div class="article-card" data-id="${a.id}">
+      <div class="card-title">
+        <a href="${a.url}" target="_blank" rel="noopener">${a.title || 'Untitled'}</a>
+      </div>
+      ${s ? `
+      <div class="card-scores">
+        <span class="score-pill ${scorePillClass(s.relevance)}">R${s.relevance}</span>
+        <span class="score-pill ${scorePillClass(s.significance)}">S${s.significance}</span>
+      </div>` : ''}
+      ${s && s.summary ? `<div class="card-summary">${s.summary}</div>` : ''}
+      <div class="card-footer">
+        <div class="card-meta">
+          <span class="source-tag">${a.feed_title}</span>
+          <span class="date-text">${formatDate(a.published_at)}</span>
+        </div>
+        <div class="feedback-btns">
+          <button onclick="sendFeedback(${a.id},'like',this)" title="Like">+</button>
+          <button onclick="sendFeedback(${a.id},'dislike',this)" title="Dislike">-</button>
+          <button onclick="sendFeedback(${a.id},'save',this)" title="Save">&#9733;</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderColumn(topicName, articles) {
+  const def = getTopicDef(topicName);
+  const isEmpty = articles.length === 0;
+  return `
+    <div class="column${isEmpty ? ' empty' : ''}">
+      <div class="column-header">
+        <div class="col-icon" style="background:${def.color}22;color:${def.color}">${def.icon}</div>
+        <span class="col-name">${topicName}</span>
+        <span class="col-count">${articles.length}</span>
+      </div>
+      <div class="column-body">
+        ${isEmpty ? '<div class="empty-state">No articles</div>' : articles.map(renderCard).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function loadArticles() {
+  const board = document.getElementById('board');
+  board.innerHTML = '<div class="loading">Loading...</div>';
+
+  const minScore = document.getElementById('minScore').value;
+  const feedId = document.getElementById('feedFilter').value;
+
+  let url = `${API}/articles?limit=100&scored_only=true`;
+  if (minScore > 0) url += `&min_score=${minScore}`;
+  if (feedId) url += `&feed_id=${feedId}`;
+
+  const res = await fetch(url);
+  const articles = await res.json();
+
+  // Group by topic
+  const groups = {};
+  for (const a of articles) {
+    const topic = classifyArticle(a);
+    if (!groups[topic]) groups[topic] = [];
+    groups[topic].push(a);
+  }
+
+  // Sort columns by TOPIC_DEFS order, Other last; skip empty
+  const orderedNames = TOPIC_DEFS.map(d => d.name);
+  const sortedTopics = Object.keys(groups).sort((a, b) => {
+    const ia = orderedNames.indexOf(a);
+    const ib = orderedNames.indexOf(b);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  if (sortedTopics.length === 0) {
+    board.innerHTML = '<div class="empty-state"><h2>No articles found</h2><p>Try lowering the min score.</p></div>';
+    return;
+  }
+
+  board.innerHTML = sortedTopics.map(t => renderColumn(t, groups[t])).join('');
+}
+
+async function sendFeedback(articleId, action, btn) {
+  await fetch(`${API}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ article_id: articleId, action })
+  });
+  const card = btn.closest('.article-card');
+  card.querySelectorAll('.feedback-btns button').forEach(b => { b.className = ''; });
+  btn.className = `active-${action}`;
+  loadStats();
+}
+
+loadStats();
+loadFeeds();
+loadArticles();
+</script>
+</body>
+</html>

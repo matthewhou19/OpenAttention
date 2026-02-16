@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python cli.py:*)",
+      "Bash(echo:*)",
+      "Bash(python -c:*)",
+      "Bash(timeout /t 3 /nobreak:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:developers.notion.com)",
+      "WebFetch(domain:www.python-engineer.com)",
+      "Bash(python -X utf8 -c:*)",
+      "Bash(taskkill:*)",
+      "Bash(python -X utf8 -m json.tool:*)",
+      "Bash(findstr:*)",
+      "Bash(python -m uvicorn:*)",
+      "Bash(gh auth status:*)",
+      "Bash(git init:*)"
+    ]
+  }
+}
