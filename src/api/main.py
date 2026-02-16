@@ -11,7 +11,7 @@ from src.db.session import init_db
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="AI RSS", version="0.1.0")
+app = FastAPI(title="AttentionOS", version="0.1.0")
 
 app.include_router(feeds.router, prefix="/api/feeds", tags=["feeds"])
 app.include_router(articles.router, prefix="/api/articles", tags=["articles"])
