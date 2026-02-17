@@ -53,6 +53,13 @@ New backend:
 - `GET/PUT /api/interests` — read and save the interest profile
 - `POST /api/chat` — conversational interface to all system actions
 
+**Technical Decisions:**
+- **Chat backend**: `POST /api/chat` calls `claude -p` subprocess (same pattern as existing `/api/fetch` and `/api/score`). No Claude API key required. 30s response time is acceptable — *"we save attention, not time."* Future: optional Claude API upgrade path for users who want faster responses.
+- **Chat history**: New `chat_messages` DB table (`id`, `role`, `content`, `created_at`). Last 10 messages sent as context per call. Chat prompt includes current interests profile and recent feedback actions for context awareness.
+- **interests.yaml absorbs sections.yaml**: Add `icon` and `color` fields to each topic in `interests.yaml`. `src/interests/manager.py` auto-generates `sections.yaml` from interests on write. The existing "nba" section (contradicts `exclude: sports`) is dropped during migration.
+- **Frontend architecture**: Split `src/api/static/index.html` (currently 631 lines) into ES modules: `app.js`, `chat.js`, `focus.js`, `onboarding.js`, `styles.css`. No framework, no build step — `<script type="module">` in a minimal `index.html` shell.
+- **Chat → Dashboard reactivity**: Chat response includes an `action` field that tells the frontend what to refresh. Examples: `{action: "refresh_articles"}` after a fetch, `{action: "refresh_interests"}` after a profile change, `{action: null}` for pure Q&A. Frontend calls the corresponding API reload on receiving the action.
+
 ### Pillar 2: Invisible Curation & Focus View (#10, #11)
 
 Scores, feeds, and thresholds disappear from the main UI. The system still scores everything — it just never shows the numbers. The presentation is designed around **focused attention**, not information overload.
@@ -76,8 +83,17 @@ Scores, feeds, and thresholds disappear from the main UI. The system still score
 **Settings panel** (gear icon): interests editor, source list, advanced/debug scores. Power features still accessible, just not in your face.
 
 New backend:
-- `src/scoring/ranker.py` — composite rank formula: `(relevance × topic_weight / 10) + (significance × 0.3) + recency_bonus`
+- `src/scoring/ranker.py` — composite rank formula
 - Updated `GET /api/articles` — sort by rank, auto-hide low-rank, support `?view=feed|focus|topics`
+
+**Technical Decisions:**
+- **Composite rank formula (fully specified)**: `composite = (relevance × max_topic_weight / 10) + (significance × 0.3) + recency_bonus` where `recency_bonus = 2 × exp(-age_hours / 48)` — 2pts when fresh, ~1pt at 48h, ~0 at 96h. Multi-topic articles use the highest matching topic weight. Total range: 0–15. No re-scoring needed — recency_bonus handles staleness naturally.
+- **Topic confidence**: Add `confidence` field (0.0–1.0) to AI scoring instructions and `Score` model. Low-confidence topic tags have halved weight in the feedback loop. Prevents misclassified-topic signals from corrupting interest weights.
+- **Three view modes**: "For You" (default, composite-ranked feed), "Focus" (scroll-snap, 3 articles/section), "Classic" (kanban — existing behavior preserved). View switcher lives in settings panel (gear icon).
+- **Pagination**: Cursor-based for "For You" (rank-ordered). Offset-based for "Classic" (existing behavior, sufficient at single-user scale).
+- **Empty states**: Post-onboard no articles → "Your interests are set! Fetching articles..." + auto-fetch trigger. Focus view all sections empty → "Nothing yet — check back soon" + fetch button. Filter no results → "No articles match this filter."
+- **Read tracking & de-prioritization**: Clicking an article link auto-marks `is_read = True` (piggybacks on dwell time tracking). Read articles get rank × 0.3 in "For You", pushing unread content above the fold. Prevents stale "same top 5 articles every day" problem.
+- **Focus View multi-topic**: Articles matching multiple topics appear in the **highest-weight section only**, no duplication. Consistent with the rank formula (use max topic weight).
 
 ### Pillar 3: Active Feedback Loop (#12 — Phase 1)
 
@@ -97,10 +113,62 @@ This is the **first stage** of #12 (Interest Profiles). Simple weight adjustment
 - New API: `POST /api/feedback/dwell` for time-based signals
 
 **Invisible adjustment:**
-- After enough signals accumulate (e.g., 20+ feedback actions), the system auto-adjusts `interests.yaml` weights in the background
+- After enough signals accumulate, the system auto-adjusts `interests.yaml` weights in the background
 - High like-ratio topics → weight increases. High dislike-ratio → weight decreases.
 - If engagement clusters on an unrecognized topic, surface a one-tap prompt: *"You've been reading a lot about Kubernetes — see more?"*
 - User never sees weight numbers, never manages a config. Content just gets better.
+
+**Technical Decisions:**
+- **Cold-start threshold**: 5 actions (not 20) before first weight adjustment. Users need to feel the system learning quickly to build trust. Step sizes decay with volume: first 10 actions → ±0.5 weight change; 10–50 → ±0.2; 50+ → ±0.1.
+- **Exploration floor (anti filter-bubble)**: No topic weight drops below 1.0 (hard floor). Reserve 10% of "For You" slots for articles from low-weight topics. Prevents the negative feedback loop where one dislike starves an entire topic of future exposure.
+- **Dwell time implementation**: Page Visibility API (`visibilitychange` event). Cap at 5 minutes (beyond = user left). Ignore < 10 seconds (accidental click). Stored in `interest_signals` table via `POST /api/feedback/dwell`.
+- **Prompt fatigue guard**: Max 3 gentle prompts per session. Minimum 10-minute cooldown between prompts. Dismissed prompts count toward the cap. No opt-out toggle needed — the cap itself prevents fatigue.
+- **Bookmark signal weight**: `save` (bookmark) = 2× like signal strength. A deliberate save — "I want this later" — is a stronger interest indicator than a thumbs-up. Bookmarked articles are also exempt from retention cleanup.
+
+### Infrastructure Prerequisites (Phase 2)
+
+These must be in place before Phase 2 features are built.
+
+**Implementation order:**
+```
+Infrastructure Prerequisites
+  ↓
+Pillar 2 (Ranking + Views)     ← independent, no dependencies
+  ↓
+Pillar 1 (Chat + Onboarding)   ← needs interests manager
+  ↓
+Pillar 3 (Feedback Loop)       ← needs For You view to exist
+```
+
+**DB migrations — Alembic:**
+- Set up Alembic before any new tables. New tables for Phase 2: `interest_signals` (per-topic engagement counters), `chat_messages` (chat history).
+- `UserPreference` table (already exists, unused) — repurpose as key/value store for session preferences and view state.
+
+**SQLite WAL mode:**
+- Enable `PRAGMA journal_mode=WAL` at engine creation — required for daemon (writer) + browser (reader) concurrent access. Without WAL, SQLite throws `database is locked` under concurrent use.
+- Add `connect_args={"timeout": 15}` to `create_engine` for write contention grace period.
+
+**Auth — optional bearer token:**
+- Single env var `ATTENTIONOS_TOKEN` in `.env`. If not set, API is open (dev mode).
+- FastAPI dependency reads `Authorization: Bearer <token>` header.
+- No login page, no session management — single-user tool.
+
+**Background daemon:**
+- New CLI command: `python cli.py daemon` — runs fetch + score every hour in a loop.
+- Alternative: Windows Task Scheduler for always-on operation.
+- Resilience: top-level `try/except` around each cycle — one failed run never kills the daemon. Single-feed failures already isolated by `fetch_all`. Claude timeouts skip scoring; unscored articles picked up next cycle automatically.
+- This is the core architectural pattern: **pre-compute everything in the background. When the user opens the dashboard, data is already ready.** Chat is just the preference layer; ranking is just the presentation layer — both over pre-computed scores.
+
+**Article retention:**
+- Articles older than 7 days with rank < 3 are auto-archived (soft delete: `is_archived = True`).
+- Bookmarked (`save` feedback) and liked articles are exempt — never auto-archived.
+- Archived articles hidden from all views but retained in DB for feedback history.
+- Daemon runs cleanup after each fetch+score cycle.
+
+**Interest-change re-scoring:**
+- When interests undergo a **structural change** (topic added or removed, not just weight tweak), flag `needs_rescore = True` in `UserPreference`.
+- Daemon checks the flag each cycle. If set: re-score articles from the last 7 days, then clear the flag.
+- Not immediate — aligns with "save attention, not time". User sees updated results within one daemon cycle (≤1 hour).
 
 ---
 
