@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from datetime import datetime, timezone
 
 from notion_client import Client
 
@@ -13,8 +12,7 @@ def _get_client() -> Client:
     token = os.environ.get("NOTION_TOKEN")
     if not token:
         raise RuntimeError(
-            "NOTION_TOKEN environment variable not set.\n"
-            "Set up at: https://www.notion.so/my-integrations"
+            "NOTION_TOKEN environment variable not set.\nSet up at: https://www.notion.so/my-integrations"
         )
     return Client(auth=token)
 
@@ -61,37 +59,19 @@ def _build_page(database_id: str, article: Article, score: Score, feed_title: st
     reason = (score.reason or "")[:2000]
 
     properties = {
-        "Title": {
-            "title": [{"text": {"content": (article.title or "Untitled")[:2000]}}]
-        },
-        "URL": {
-            "url": article.url
-        },
-        "Relevance": {
-            "number": score.relevance
-        },
-        "Significance": {
-            "number": score.significance
-        },
-        "Summary": {
-            "rich_text": [{"text": {"content": summary}}] if summary else []
-        },
-        "Topics": {
-            "multi_select": [{"name": t[:100]} for t in topics[:10]]
-        },
-        "Source": {
-            "select": {"name": (feed_title or "Unknown")[:100]}
-        },
-        "Reason": {
-            "rich_text": [{"text": {"content": reason}}] if reason else []
-        },
+        "Title": {"title": [{"text": {"content": (article.title or "Untitled")[:2000]}}]},
+        "URL": {"url": article.url},
+        "Relevance": {"number": score.relevance},
+        "Significance": {"number": score.significance},
+        "Summary": {"rich_text": [{"text": {"content": summary}}] if summary else []},
+        "Topics": {"multi_select": [{"name": t[:100]} for t in topics[:10]]},
+        "Source": {"select": {"name": (feed_title or "Unknown")[:100]}},
+        "Reason": {"rich_text": [{"text": {"content": reason}}] if reason else []},
     }
 
     # Add published date if available
     if article.published_at:
-        properties["Published"] = {
-            "date": {"start": article.published_at.strftime("%Y-%m-%d")}
-        }
+        properties["Published"] = {"date": {"start": article.published_at.strftime("%Y-%m-%d")}}
 
     return {"parent": {"database_id": database_id}, "properties": properties}
 

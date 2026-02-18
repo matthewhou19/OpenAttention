@@ -13,6 +13,7 @@ def cli():
 
 # --- Feed management ---
 
+
 @cli.group()
 def feeds():
     """Manage RSS feeds."""
@@ -25,6 +26,7 @@ def feeds():
 def feeds_add(url, category):
     """Add a new RSS feed."""
     from src.feeds.manager import add_feed
+
     try:
         feed = add_feed(url, category)
         click.echo(f"Added feed #{feed.id}: {feed.title or feed.url}")
@@ -38,6 +40,7 @@ def feeds_add(url, category):
 def feeds_list(enabled_only):
     """List all feeds."""
     from src.feeds.manager import list_feeds
+
     feed_list = list_feeds(enabled_only)
     if not feed_list:
         click.echo("No feeds found. Add one with: python cli.py feeds add <url>")
@@ -55,6 +58,7 @@ def feeds_list(enabled_only):
 def feeds_remove(feed_id):
     """Remove a feed by ID."""
     from src.feeds.manager import remove_feed
+
     if remove_feed(feed_id):
         click.echo(f"Removed feed #{feed_id}")
     else:
@@ -64,11 +68,13 @@ def feeds_remove(feed_id):
 
 # --- Fetch ---
 
+
 @cli.command()
 @click.option("--feed-id", type=int, default=None, help="Fetch from specific feed only")
 def fetch(feed_id):
     """Fetch new articles from feeds."""
     from src.feeds.fetcher import fetch_all
+
     click.echo("Fetching articles...")
     results = fetch_all(feed_id)
     total = 0
@@ -83,6 +89,7 @@ def fetch(feed_id):
 
 # --- Scoring ---
 
+
 @cli.group()
 def score():
     """Scoring commands."""
@@ -94,7 +101,9 @@ def score():
 def score_prepare(limit):
     """Output unscored articles as JSON for Claude Code evaluation."""
     import sys
+
     from src.scoring.preparer import prepare_scoring_prompt
+
     output = prepare_scoring_prompt(limit)
     sys.stdout.buffer.write(output.encode("utf-8"))
     sys.stdout.buffer.write(b"\n")
@@ -105,6 +114,7 @@ def score_prepare(limit):
 def score_write(scores_json):
     """Write scores back to the database. Accepts JSON array string."""
     from src.scoring.preparer import write_scores
+
     try:
         count = write_scores(scores_json)
         click.echo(f"Wrote {count} scores")
@@ -118,6 +128,7 @@ def score_write(scores_json):
 def score_write_file(filepath):
     """Write scores from a JSON file."""
     from src.scoring.preparer import write_scores
+
     with open(filepath, "r", encoding="utf-8") as f:
         data = f.read()
     try:
@@ -130,6 +141,7 @@ def score_write_file(filepath):
 
 # --- Sections ---
 
+
 @cli.group()
 def sections():
     """Manage dashboard sections (topic columns)."""
@@ -138,7 +150,9 @@ def sections():
 
 def _load_sections():
     import yaml
+
     from src.config import SECTIONS_PATH
+
     if not SECTIONS_PATH.exists():
         return []
     data = yaml.safe_load(SECTIONS_PATH.read_text(encoding="utf-8"))
@@ -147,7 +161,9 @@ def _load_sections():
 
 def _save_sections(sections_list):
     import yaml
+
     from src.config import SECTIONS_PATH
+
     SECTIONS_PATH.write_text(
         yaml.dump({"sections": sections_list}, allow_unicode=True, sort_keys=False),
         encoding="utf-8",
@@ -156,6 +172,7 @@ def _save_sections(sections_list):
 
 def _echo_utf8(text):
     import sys
+
     sys.stdout.buffer.write(text.encode("utf-8"))
     sys.stdout.buffer.write(b"\n")
 
@@ -170,13 +187,13 @@ def sections_list():
     for i, s in enumerate(secs):
         vis = "visible" if s.get("visible", True) else "hidden"
         kw = ", ".join(s.get("match", []))
-        _echo_utf8(f"  {i+1}. {s['icon']} {s['name']} ({s['color']}) [{vis}]")
+        _echo_utf8(f"  {i + 1}. {s['icon']} {s['name']} ({s['color']}) [{vis}]")
         _echo_utf8(f"     Keywords: {kw}")
 
 
 @sections.command("add")
 @click.argument("name")
-@click.option("--icon", default="\U0001F4C4", help="Emoji icon")
+@click.option("--icon", default="\U0001f4c4", help="Emoji icon")
 @click.option("--color", default="#71717a", help="Hex color")
 @click.option("--match", "match_str", default="", help="Comma-separated keywords")
 def sections_add(name, icon, color, match_str):
@@ -209,7 +226,12 @@ def sections_remove(name):
 @click.argument("name")
 @click.option("--icon", default=None, help="New emoji icon")
 @click.option("--color", default=None, help="New hex color")
-@click.option("--match", "match_str", default=None, help="New comma-separated keywords (replaces existing)")
+@click.option(
+    "--match",
+    "match_str",
+    default=None,
+    help="New comma-separated keywords (replaces existing)",
+)
 @click.option("--visible/--hidden", default=None, help="Show or hide this section")
 def sections_update(name, icon, color, match_str, visible):
     """Update properties of an existing section."""
@@ -232,6 +254,7 @@ def sections_update(name, icon, color, match_str, visible):
 
 # --- Export ---
 
+
 @cli.group()
 def export():
     """Export scored articles to external services."""
@@ -247,12 +270,15 @@ def export_notion(min_score, limit):
     Requires NOTION_TOKEN and NOTION_DATABASE_ID environment variables.
     """
     from src.export.notion import export_to_notion
+
     try:
         click.echo("Exporting to Notion...")
         stats = export_to_notion(min_score=min_score, limit=limit)
-        click.echo(f"Done! Exported: {stats['exported']}, "
-                   f"Skipped (duplicate): {stats['skipped_duplicate']}, "
-                   f"Errors: {stats['errors']}")
+        click.echo(
+            f"Done! Exported: {stats['exported']}, "
+            f"Skipped (duplicate): {stats['skipped_duplicate']}, "
+            f"Errors: {stats['errors']}"
+        )
     except RuntimeError as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
@@ -260,13 +286,16 @@ def export_notion(min_score, limit):
 
 # --- API ---
 
+
 @cli.command()
 @click.option("--host", default="127.0.0.1", help="Host to bind to")
 @click.option("--port", "-p", type=int, default=8000, help="Port to bind to")
 def api(host, port):
     """Start the FastAPI server."""
     import uvicorn
+
     from src.api.main import app
+
     click.echo(f"Starting API server at http://{host}:{port}")
     uvicorn.run(app, host=host, port=port)
 

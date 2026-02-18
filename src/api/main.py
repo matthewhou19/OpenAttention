@@ -65,7 +65,7 @@ def get_stats():
     try:
         return {
             "feeds": session.query(Feed).count(),
-            "feeds_enabled": session.query(Feed).filter(Feed.enabled == True).count(),
+            "feeds_enabled": session.query(Feed).filter(Feed.enabled).count(),
             "articles": session.query(Article).count(),
             "scored": session.query(Score).count(),
             "feedback": session.query(Feedback).count(),

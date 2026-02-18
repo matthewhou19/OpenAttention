@@ -21,6 +21,7 @@ def get_unscored_articles(limit: int = 20) -> list[dict]:
     session = get_session()
     try:
         from sqlalchemy import select
+
         scored_ids = select(Score.article_id)
         articles = (
             session.query(Article)
@@ -37,15 +38,17 @@ def get_unscored_articles(limit: int = 20) -> list[dict]:
             if len(text) > 1000:
                 text = text[:1000] + "..."
 
-            result.append({
-                "id": a.id,
-                "title": a.title,
-                "url": a.url,
-                "author": a.author,
-                "text": text,
-                "published_at": a.published_at.isoformat() if a.published_at else None,
-                "feed_id": a.feed_id,
-            })
+            result.append(
+                {
+                    "id": a.id,
+                    "title": a.title,
+                    "url": a.url,
+                    "author": a.author,
+                    "text": text,
+                    "published_at": a.published_at.isoformat() if a.published_at else None,
+                    "feed_id": a.feed_id,
+                }
+            )
         return result
     finally:
         session.close()
@@ -59,17 +62,21 @@ def prepare_scoring_prompt(limit: int = 20) -> str:
     if not articles:
         return json.dumps({"status": "no_unscored_articles", "count": 0})
 
-    return json.dumps({
-        "interests": interests,
-        "articles": articles,
-        "count": len(articles),
-        "instructions": (
-            "Score each article. For each, return: "
-            "article_id, relevance (0-10), significance (0-10), "
-            "summary (1-2 sentences), topics (list of tags), "
-            "reason (why this score). Output as a JSON array."
-        ),
-    }, indent=2, ensure_ascii=False)
+    return json.dumps(
+        {
+            "interests": interests,
+            "articles": articles,
+            "count": len(articles),
+            "instructions": (
+                "Score each article. For each, return: "
+                "article_id, relevance (0-10), significance (0-10), "
+                "summary (1-2 sentences), topics (list of tags), "
+                "reason (why this score). Output as a JSON array."
+            ),
+        },
+        indent=2,
+        ensure_ascii=False,
+    )
 
 
 def write_scores(scores_json: str) -> int:
@@ -114,7 +121,7 @@ def write_scores(scores_json: str) -> int:
 
         session.commit()
         return written
-    except Exception as e:
+    except Exception:
         session.rollback()
         raise
     finally:

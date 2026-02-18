@@ -1,4 +1,3 @@
-import time
 from datetime import datetime, timezone
 
 import feedparser
@@ -88,7 +87,7 @@ def fetch_all(feed_id: int | None = None) -> dict[str, int]:
     """Fetch from all enabled feeds (or a specific one). Returns {feed_title: new_count}."""
     session = get_session()
     try:
-        query = session.query(Feed).filter(Feed.enabled == True)
+        query = session.query(Feed).filter(Feed.enabled)
         if feed_id is not None:
             query = query.filter(Feed.id == feed_id)
         feeds = query.all()

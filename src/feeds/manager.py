@@ -1,5 +1,3 @@
-from datetime import datetime, timezone
-
 import feedparser
 
 from src.db.models import Feed
@@ -39,7 +37,7 @@ def list_feeds(enabled_only: bool = False) -> list[Feed]:
     try:
         query = session.query(Feed)
         if enabled_only:
-            query = query.filter(Feed.enabled == True)
+            query = query.filter(Feed.enabled.is_(True))
         return query.order_by(Feed.id).all()
     finally:
         session.close()

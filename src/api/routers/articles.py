@@ -87,20 +87,22 @@ def list_articles(
                 feed_title = a.feed.title or a.feed.url
                 feed_category = a.feed.category or ""
 
-            result.append(ArticleResponse(
-                id=a.id,
-                feed_id=a.feed_id,
-                feed_title=feed_title,
-                feed_category=feed_category,
-                url=a.url,
-                title=a.title or "",
-                author=a.author or "",
-                summary=a.summary or "",
-                published_at=a.published_at.isoformat() if a.published_at else None,
-                is_read=a.is_read,
-                is_starred=a.is_starred,
-                score=score_out,
-            ))
+            result.append(
+                ArticleResponse(
+                    id=a.id,
+                    feed_id=a.feed_id,
+                    feed_title=feed_title,
+                    feed_category=feed_category,
+                    url=a.url,
+                    title=a.title or "",
+                    author=a.author or "",
+                    summary=a.summary or "",
+                    published_at=a.published_at.isoformat() if a.published_at else None,
+                    is_read=a.is_read,
+                    is_starred=a.is_starred,
+                    score=score_out,
+                )
+            )
         return result
     finally:
         session.close()
