@@ -284,6 +284,24 @@ def export_notion(min_score, limit):
         raise SystemExit(1)
 
 
+# --- Daemon ---
+
+
+@cli.command()
+@click.option("--interval", type=int, default=3600, help="Seconds between cycles (default: 3600)")
+def daemon(interval):
+    """Run background daemon: fetch + score + cleanup every hour."""
+    import logging
+
+    from src.daemon import run_daemon
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+    run_daemon(interval=interval)
+
+
 # --- API ---
 
 
