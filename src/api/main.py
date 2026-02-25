@@ -79,6 +79,7 @@ def get_stats():
             "feeds": session.query(Feed).count(),
             "feeds_enabled": session.query(Feed).filter(Feed.enabled).count(),
             "articles": session.query(Article).count(),
+            "archived": session.query(Article).filter(Article.is_archived == True).count(),  # noqa: E712
             "scored": session.query(Score).count(),
             "feedback": session.query(Feedback).count(),
         }

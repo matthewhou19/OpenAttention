@@ -42,12 +42,16 @@ def list_articles(
     topic: str = Query("", description="Filter by topic"),
     feed_id: int | None = Query(None, description="Filter by feed"),
     scored_only: bool = Query(False, description="Only show scored articles"),
+    include_archived: bool = Query(False, description="Include archived articles"),
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
 ):
     session = get_session()
     try:
         query = session.query(Article).outerjoin(Score).outerjoin(Feed)
+
+        if not include_archived:
+            query = query.filter(Article.is_archived != True)  # noqa: E712
 
         if scored_only or min_score > 0:
             query = query.filter(Score.id.isnot(None))
