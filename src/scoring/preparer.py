@@ -1,19 +1,9 @@
 import json
 from datetime import datetime, timezone
 
-import yaml
-
-from src.config import INTERESTS_PATH
 from src.db.models import Article, Score
 from src.db.session import get_session
-
-
-def load_interests() -> dict:
-    """Load user interests from YAML file."""
-    if not INTERESTS_PATH.exists():
-        return {"description": "", "topics": [], "exclude": []}
-    with open(INTERESTS_PATH, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+from src.interests.manager import load_interests
 
 
 def get_unscored_articles(limit: int = 20) -> list[dict]:

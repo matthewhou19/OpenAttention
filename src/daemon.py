@@ -121,7 +121,12 @@ def cleanup_articles(session) -> int:
 
 
 def check_rescore(session) -> None:
-    """Check needs_rescore flag and re-score recent articles if set."""
+    """Check needs_rescore flag and re-score recent articles if set.
+
+    When interests undergo a structural change (topic added/removed),
+    delete scores for articles from the last 7 days so they get re-scored
+    with the updated interest profile.
+    """
     pref = (
         session.query(UserPreference)
         .filter(UserPreference.key == "needs_rescore")
@@ -139,9 +144,25 @@ def check_rescore(session) -> None:
         return
 
     logger.info("needs_rescore flag set — re-scoring recent articles")
-    score_unscored(limit=50)
 
-    # Clear the flag
+    # Delete scores for articles fetched within the last 7 days
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    recent_article_ids = select(Article.id).where(Article.fetched_at > cutoff)
+    deleted = (
+        session.query(Score)
+        .filter(Score.article_id.in_(recent_article_ids))
+        .delete(synchronize_session="fetch")
+    )
+    if deleted > 0:
+        session.commit()
+        logger.info("Deleted %d scores for re-scoring", deleted)
+
+    try:
+        score_unscored(limit=50)
+    except Exception:
+        logger.exception("Re-scoring failed; articles will be scored in next normal cycle")
+
+    # Always clear the flag — articles are unscored and will be picked up normally
     pref.value = json.dumps("false")
     pref.updated_at = datetime.now(timezone.utc)
     session.commit()
