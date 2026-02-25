@@ -1,23 +1,35 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from src.api.auth import verify_token
 from src.api.routers import articles, feeds, scores
 from src.config import SECTIONS_PATH
 from src.db.session import init_db
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="AttentionOS", version="0.1.0")
+# Disable OpenAPI docs when auth is active — prevents schema leak on protected deployments
+_token_set = bool(os.environ.get("ATTENTIONOS_TOKEN", "").strip())
+app = FastAPI(
+    title="AttentionOS",
+    version="0.1.0",
+    docs_url=None if _token_set else "/docs",
+    redoc_url=None if _token_set else "/redoc",
+    openapi_url=None if _token_set else "/openapi.json",
+)
 
-app.include_router(feeds.router, prefix="/api/feeds", tags=["feeds"])
-app.include_router(articles.router, prefix="/api/articles", tags=["articles"])
-app.include_router(scores.router, prefix="/api", tags=["scores"])
+_auth = [Depends(verify_token)]
+
+app.include_router(feeds.router, prefix="/api/feeds", tags=["feeds"], dependencies=_auth)
+app.include_router(articles.router, prefix="/api/articles", tags=["articles"], dependencies=_auth)
+app.include_router(scores.router, prefix="/api", tags=["scores"], dependencies=_auth)
 
 
 @app.get("/", include_in_schema=False)
@@ -30,7 +42,7 @@ def startup():
     init_db()
 
 
-@app.get("/api/sections")
+@app.get("/api/sections", dependencies=_auth)
 def get_sections():
     if not SECTIONS_PATH.exists():
         return []
@@ -46,7 +58,7 @@ class SectionItem(BaseModel):
     visible: bool = True
 
 
-@app.put("/api/sections")
+@app.put("/api/sections", dependencies=_auth)
 def put_sections(items: list[SectionItem]):
     data = {"sections": [s.model_dump() for s in items]}
     SECTIONS_PATH.write_text(
@@ -56,7 +68,7 @@ def put_sections(items: list[SectionItem]):
     return {"ok": True, "count": len(items)}
 
 
-@app.get("/api/stats")
+@app.get("/api/stats", dependencies=_auth)
 def get_stats():
     from src.db.models import Article, Feed, Feedback, Score
     from src.db.session import get_session
@@ -74,7 +86,7 @@ def get_stats():
         session.close()
 
 
-@app.post("/api/fetch")
+@app.post("/api/fetch", dependencies=_auth)
 def api_fetch():
     """Fetch new articles from all feeds, then auto-score with Claude CLI."""
     from src.feeds.fetcher import fetch_all
@@ -126,7 +138,7 @@ def api_fetch():
     }
 
 
-@app.post("/api/score")
+@app.post("/api/score", dependencies=_auth)
 def api_score(limit: int = 20):
     from src.scoring.preparer import prepare_scoring_prompt, write_scores
 
