@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import sessionmaker
 
 from src.config import DB_URL
@@ -9,7 +9,8 @@ SessionLocal = sessionmaker(bind=engine)
 
 def init_db():
     """Ensure database is ready. Schema managed by Alembic migrations."""
-    pass
+    if not inspect(engine).has_table("alembic_version"):
+        raise RuntimeError("Database not initialized. Run: alembic upgrade head")
 
 
 def get_session():

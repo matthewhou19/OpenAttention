@@ -5,7 +5,8 @@ Tests verify:
 2. Existing DB preserves data after stamp + upgrade
 3. New tables have correct schema
 4. New columns have correct defaults
-5. init_db() no longer calls create_all()
+5. init_db() raises helpful error when migrations not run
+6. env.py uses DB_URL from src.config with render_as_batch
 """
 
 import os
@@ -13,12 +14,12 @@ import tempfile
 
 from sqlalchemy import create_engine, inspect, text
 
-from src.db.models import Base, Feed, Article, Score
-
+from src.db.models import Article, Score
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_temp_db():
     """Return (path, url) for a fresh temp SQLite file."""
@@ -32,6 +33,7 @@ def _make_temp_db():
 def _run_alembic_upgrade(url, revision="head"):
     """Run alembic upgrade to a given revision against a custom DB URL."""
     from alembic.config import Config
+
     from alembic import command
 
     cfg = Config("alembic.ini")
@@ -42,6 +44,7 @@ def _run_alembic_upgrade(url, revision="head"):
 def _run_alembic_stamp(url, revision):
     """Stamp a revision without running migration SQL."""
     from alembic.config import Config
+
     from alembic import command
 
     cfg = Config("alembic.ini")
@@ -55,18 +58,24 @@ def _seed_phase1_db(url):
     _run_alembic_upgrade(url, "001")
     engine = create_engine(url)
     with engine.begin() as conn:
-        conn.execute(text(
-            "INSERT INTO feeds (url, title, category, enabled) "
-            "VALUES ('https://example.com/feed', 'Test Feed', 'tech', 1)"
-        ))
-        conn.execute(text(
-            "INSERT INTO articles (feed_id, url, title, is_read, is_starred) "
-            "VALUES (1, 'https://example.com/1', 'Test Article', 0, 0)"
-        ))
-        conn.execute(text(
-            "INSERT INTO scores (article_id, relevance, significance, summary, topics, reason) "
-            "VALUES (1, 8.5, 7.0, 'A test summary', '[\"AI\"]', 'Good article')"
-        ))
+        conn.execute(
+            text(
+                "INSERT INTO feeds (url, title, category, enabled) "
+                "VALUES ('https://example.com/feed', 'Test Feed', 'tech', 1)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO articles (feed_id, url, title, is_read, is_starred) "
+                "VALUES (1, 'https://example.com/1', 'Test Article', 0, 0)"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO scores (article_id, relevance, significance, summary, topics, reason) "
+                "VALUES (1, 8.5, 7.0, 'A test summary', '[\"AI\"]', 'Good article')"
+            )
+        )
     engine.dispose()
     return engine
 
@@ -74,6 +83,7 @@ def _seed_phase1_db(url):
 # ---------------------------------------------------------------------------
 # AC-1: Fresh DB creates all 7 tables
 # ---------------------------------------------------------------------------
+
 
 def test_fresh_db_creates_all_tables():
     path, url = _make_temp_db()
@@ -102,6 +112,7 @@ def test_fresh_db_creates_all_tables():
 # ---------------------------------------------------------------------------
 # AC-2: Existing DB preserved after stamp + upgrade
 # ---------------------------------------------------------------------------
+
 
 def test_existing_db_data_preserved():
     path, url = _make_temp_db()
@@ -134,6 +145,7 @@ def test_existing_db_data_preserved():
 # AC-3: interest_signals table has correct schema
 # ---------------------------------------------------------------------------
 
+
 def test_interest_signals_schema():
     path, url = _make_temp_db()
     try:
@@ -149,15 +161,11 @@ def test_interest_signals_schema():
         assert "count" in columns
         assert "updated_at" in columns
 
-        # Verify unique constraint on (topic, signal_type)
+        # Verify composite unique constraint on (topic, signal_type)
         uniques = inspector.get_unique_constraints("interest_signals")
-        constrained_cols = set()
-        for uc in uniques:
-            constrained_cols.update(tuple(uc["column_names"]))
-        # Both topic and signal_type should be in some unique constraint
-        assert "topic" in constrained_cols or any(
-            set(uc["column_names"]) == {"topic", "signal_type"} for uc in uniques
-        ), "Missing unique constraint on (topic, signal_type)"
+        assert any(set(uc["column_names"]) == {"topic", "signal_type"} for uc in uniques), (
+            "Missing composite unique constraint on (topic, signal_type)"
+        )
 
         engine.dispose()
     finally:
@@ -168,6 +176,7 @@ def test_interest_signals_schema():
 # ---------------------------------------------------------------------------
 # AC-4: chat_messages table has correct schema
 # ---------------------------------------------------------------------------
+
 
 def test_chat_messages_schema():
     path, url = _make_temp_db()
@@ -193,6 +202,7 @@ def test_chat_messages_schema():
 # AC-5: scores.confidence column with default 1.0
 # ---------------------------------------------------------------------------
 
+
 def test_scores_confidence_column():
     path, url = _make_temp_db()
     try:
@@ -215,6 +225,7 @@ def test_scores_confidence_column():
 # AC-6: articles.is_archived column with default False
 # ---------------------------------------------------------------------------
 
+
 def test_articles_is_archived_column():
     path, url = _make_temp_db()
     try:
@@ -233,23 +244,61 @@ def test_articles_is_archived_column():
 
 
 # ---------------------------------------------------------------------------
-# AC-7: init_db() no longer calls create_all()
+# AC-7: init_db() raises helpful error when migrations not run
 # ---------------------------------------------------------------------------
 
-def test_init_db_does_not_call_create_all():
-    import inspect as py_inspect
-    from src.db import session
 
-    source = py_inspect.getsource(session.init_db)
-    assert "create_all" not in source, "init_db() still calls create_all()"
+def test_init_db_raises_on_missing_migrations():
+    """init_db() should raise RuntimeError with 'alembic upgrade head' when DB has no alembic_version."""
+    from unittest.mock import patch
+
+    path, url = _make_temp_db()
+    try:
+        # Create empty DB (touch file so SQLite connects, but no tables)
+        test_engine = create_engine(url)
+        with test_engine.connect():
+            pass  # creates the file
+
+        with patch("src.db.session.engine", test_engine):
+            try:
+                from src.db import session as session_mod
+
+                session_mod.init_db()
+                assert False, "init_db() should have raised RuntimeError"
+            except RuntimeError as e:
+                assert "alembic upgrade head" in str(e), f"Error should mention 'alembic upgrade head', got: {e}"
+        test_engine.dispose()
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
+
+
+def test_init_db_succeeds_when_migrations_applied():
+    """init_db() should succeed silently when alembic_version table exists."""
+    from unittest.mock import patch
+
+    path, url = _make_temp_db()
+    try:
+        _run_alembic_upgrade(url)
+        test_engine = create_engine(url)
+        with patch("src.db.session.engine", test_engine):
+            from src.db import session as session_mod
+
+            # Should not raise
+            session_mod.init_db()
+        test_engine.dispose()
+    finally:
+        if os.path.exists(path):
+            os.unlink(path)
 
 
 # ---------------------------------------------------------------------------
 # AC-8: Models importable and have new fields
 # ---------------------------------------------------------------------------
 
+
 def test_models_have_new_fields():
-    from src.db.models import InterestSignal, ChatMessage, Score, Article
+    from src.db.models import ChatMessage, InterestSignal
 
     # InterestSignal exists and has expected columns
     assert hasattr(InterestSignal, "topic")
@@ -265,3 +314,28 @@ def test_models_have_new_fields():
 
     # Article has is_archived
     assert hasattr(Article, "is_archived")
+
+
+# ---------------------------------------------------------------------------
+# AC-9: env.py uses DB_URL from src.config (not just alembic.ini)
+# ---------------------------------------------------------------------------
+
+
+def test_env_py_imports_db_url():
+    """alembic/env.py should import and use DB_URL from src.config."""
+    with open("alembic/env.py") as f:
+        source = f.read()
+    assert "from src.config import" in source and "DB_URL" in source, "env.py should import DB_URL from src.config"
+    assert "set_main_option" in source, "env.py should call config.set_main_option to override alembic.ini URL"
+
+
+# ---------------------------------------------------------------------------
+# AC-10: env.py has render_as_batch=True
+# ---------------------------------------------------------------------------
+
+
+def test_env_py_render_as_batch():
+    """Both context.configure() calls in env.py should have render_as_batch=True."""
+    with open("alembic/env.py") as f:
+        source = f.read()
+    assert "render_as_batch=True" in source, "env.py should set render_as_batch=True for SQLite safety"
