@@ -10,6 +10,8 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -47,6 +49,7 @@ class Article(Base):
     fetched_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     is_read = Column(Boolean, default=False)
     is_starred = Column(Boolean, default=False)
+    is_archived = Column(Boolean, default=False)
 
     feed = relationship("Feed", back_populates="articles")
     score = relationship("Score", back_populates="article", uselist=False, cascade="all, delete-orphan")
@@ -63,6 +66,7 @@ class Score(Base):
     summary = Column(Text, default="")
     topics = Column(Text, default="[]")  # JSON array
     reason = Column(Text, default="")
+    confidence = Column(Float, default=1.0)
     scored_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     article = relationship("Article", back_populates="score")
@@ -94,3 +98,24 @@ class UserPreference(Base):
     key = Column(String, unique=True, nullable=False)
     value = Column(Text, default="{}")  # JSON
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class InterestSignal(Base):
+    __tablename__ = "interest_signals"
+
+    id = Column(Integer, primary_key=True)
+    topic = Column(String, nullable=False)
+    signal_type = Column(String, nullable=False)  # like, dislike, save, dwell
+    count = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    __table_args__ = (UniqueConstraint("topic", "signal_type"),)
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True)
+    role = Column(String, nullable=False)  # user, assistant
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=func.now())
