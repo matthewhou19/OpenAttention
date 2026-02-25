@@ -1,4 +1,4 @@
-"""Acceptance tests for Issue #1: Alembic migration setup.
+"""Acceptance tests for Alembic migrations and SQLite configuration.
 
 Tests verify:
 1. Fresh DB gets all 7 tables from `alembic upgrade head`
@@ -7,6 +7,8 @@ Tests verify:
 4. New columns have correct defaults
 5. init_db() raises helpful error when migrations not run
 6. env.py uses DB_URL from src.config with render_as_batch
+7. SQLite WAL mode is enabled on the production engine (Issue #2)
+8. Concurrent read+write does not raise database is locked (Issue #2)
 """
 
 import os
@@ -339,3 +341,110 @@ def test_env_py_render_as_batch():
     with open("alembic/env.py") as f:
         source = f.read()
     assert "render_as_batch=True" in source, "env.py should set render_as_batch=True for SQLite safety"
+
+
+# ---------------------------------------------------------------------------
+# AC-11: WAL mode is enabled on the production engine (Issue #2)
+# ---------------------------------------------------------------------------
+
+
+def test_session_engine_has_wal():
+    """The actual engine from src.db.session should have WAL mode active."""
+    from src.db.session import engine
+
+    with engine.connect() as conn:
+        mode = conn.execute(text("PRAGMA journal_mode")).scalar()
+        assert mode == "wal", f"Expected journal_mode=wal, got {mode}"
+
+
+def test_session_engine_has_timeout():
+    """The engine from src.db.session should have connect_args with timeout=15."""
+    with open("src/db/session.py") as f:
+        source = f.read()
+    assert '"timeout": 15' in source or "'timeout': 15" in source, (
+        "session.py should have connect_args with timeout=15"
+    )
+
+
+# ---------------------------------------------------------------------------
+# AC-12: Concurrent read+write does not raise database is locked (Issue #2)
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_read_write():
+    """Concurrent reader + writer should not raise 'database is locked' with WAL mode."""
+    import threading
+    import time
+
+    from sqlalchemy import event
+
+    path, url = _make_temp_db()
+    writer_engine = None
+    reader_engine = None
+
+    try:
+        _run_alembic_upgrade(url)
+
+        def _make_wal_engine(db_url):
+            eng = create_engine(db_url, connect_args={"timeout": 15})
+
+            @event.listens_for(eng, "connect")
+            def _set_wal(dbapi_conn, connection_record):
+                cursor = dbapi_conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.close()
+
+            return eng
+
+        writer_engine = _make_wal_engine(url)
+        reader_engine = _make_wal_engine(url)
+
+        # Force WAL activation before concurrent test
+        with writer_engine.connect() as conn:
+            assert conn.execute(text("PRAGMA journal_mode")).scalar() == "wal"
+        with reader_engine.connect() as conn:
+            assert conn.execute(text("PRAGMA journal_mode")).scalar() == "wal"
+
+        errors = []
+
+        def writer():
+            try:
+                for i in range(20):
+                    with writer_engine.begin() as conn:
+                        conn.execute(
+                            text(
+                                "INSERT INTO feeds (url, title, category, enabled) "
+                                f"VALUES ('https://example.com/feed{i}', 'Feed {i}', 'test', 1)"
+                            )
+                        )
+                    time.sleep(0.01)
+            except Exception as e:
+                errors.append(f"Writer error: {e}")
+
+        def reader():
+            try:
+                for _ in range(20):
+                    with reader_engine.connect() as conn:
+                        conn.execute(text("SELECT COUNT(*) FROM feeds")).scalar()
+                    time.sleep(0.01)
+            except Exception as e:
+                errors.append(f"Reader error: {e}")
+
+        t_write = threading.Thread(target=writer)
+        t_read = threading.Thread(target=reader)
+        t_write.start()
+        t_read.start()
+        t_write.join(timeout=10)
+        t_read.join(timeout=10)
+
+        assert not errors, f"Concurrent access errors: {errors}"
+    finally:
+        if writer_engine is not None:
+            writer_engine.dispose()
+        if reader_engine is not None:
+            reader_engine.dispose()
+        time.sleep(0.1)
+        for suffix in ("", "-wal", "-shm"):
+            p = path + suffix
+            if os.path.exists(p):
+                os.unlink(p)
