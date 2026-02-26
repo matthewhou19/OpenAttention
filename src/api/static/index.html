@@ -43,7 +43,40 @@
     flex-shrink: 0;
   }
 
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
   .header h1 { font-size: 18px; font-weight: 600; }
+
+  .view-toggle {
+    display: flex;
+    gap: 2px;
+    background: var(--surface2);
+    border-radius: 6px;
+    padding: 2px;
+  }
+
+  .view-toggle button {
+    background: transparent;
+    border: none;
+    color: var(--text2);
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .view-toggle button.active {
+    background: var(--accent);
+    color: white;
+  }
+
+  .view-toggle button:hover:not(.active) { color: var(--text); }
 
   .header-right {
     display: flex;
@@ -86,7 +119,7 @@
     margin-right: -4px;
   }
 
-  /* --- Columns layout --- */
+  /* --- Columns layout (Classic view) --- */
   .board {
     flex: 1;
     display: flex;
@@ -158,6 +191,23 @@
   .column-body::-webkit-scrollbar-track { background: transparent; }
   .column-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+  /* --- For You feed layout --- */
+  .feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 0;
+  }
+
+  .feed::-webkit-scrollbar { width: 6px; }
+  .feed::-webkit-scrollbar-track { background: var(--bg); }
+  .feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .feed-inner {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 16px;
+  }
+
   /* --- Article cards --- */
   .article-card {
     background: var(--surface2);
@@ -176,6 +226,9 @@
     line-height: 1.4;
     margin-bottom: 4px;
   }
+
+  /* For You card title is bigger */
+  .feed .card-title { font-size: 15px; margin-bottom: 6px; }
 
   .card-title a { color: var(--text); text-decoration: none; }
   .card-title a:hover { color: var(--accent2); }
@@ -203,6 +256,23 @@
     color: var(--text2);
     margin-bottom: 8px;
     line-height: 1.4;
+  }
+
+  .feed .card-summary { font-size: 13px; margin-bottom: 10px; }
+
+  .card-topics {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+
+  .topic-chip {
+    font-size: 10px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    white-space: nowrap;
   }
 
   .card-footer {
@@ -262,6 +332,23 @@
   }
 
   .loading { text-align: center; padding: 40px; color: var(--text2); }
+
+  .load-more {
+    text-align: center;
+    padding: 16px;
+  }
+
+  .load-more button {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    padding: 8px 24px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .load-more button:hover { border-color: var(--accent); color: var(--text); }
 
   /* --- Action bar --- */
   .actions {
@@ -323,20 +410,36 @@
     white-space: nowrap;
   }
 
+  /* Classic-only filters */
+  .classic-filters { display: none; }
+  body.view-classic .classic-filters { display: flex; }
+
+  /* View visibility */
+  body.view-classic #feedContainer { display: none; }
+  body.view-classic #board { display: flex; }
+  body.view-foryou #feedContainer { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+  body.view-foryou #board { display: none; }
+
   /* Empty column placeholder */
   .column.empty { opacity: 0.5; }
   .column.empty .column-body { display: flex; align-items: center; justify-content: center; }
 </style>
 </head>
-<body>
+<body class="view-foryou">
 
 <div class="header">
-  <h1>AttentionOS</h1>
+  <div class="header-left">
+    <h1>AttentionOS</h1>
+    <div class="view-toggle">
+      <button class="active" onclick="switchView('foryou')" id="viewForYou">For You</button>
+      <button onclick="switchView('classic')" id="viewClassic">Classic</button>
+    </div>
+  </div>
   <div class="header-right">
     <div class="stats" id="stats"></div>
-    <div class="filters">
+    <div class="filters classic-filters">
       <label>Score</label>
-      <select id="minScore" onchange="loadArticles()">
+      <select id="minScore" onchange="loadClassicArticles()">
         <option value="0">All</option>
         <option value="5">5+</option>
         <option value="7" selected>7+</option>
@@ -344,7 +447,7 @@
         <option value="9">9+</option>
       </select>
       <label>Source</label>
-      <select id="feedFilter" onchange="loadArticles()">
+      <select id="feedFilter" onchange="loadClassicArticles()">
         <option value="">All</option>
       </select>
     </div>
@@ -362,6 +465,16 @@
   <span id="actionStatus"></span>
 </div>
 
+<!-- For You view -->
+<div id="feedContainer">
+  <div class="feed" id="feed">
+    <div class="feed-inner" id="feedInner">
+      <div class="loading">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Classic (kanban) view -->
 <div class="board" id="board">
   <div class="loading">Loading...</div>
 </div>
@@ -370,11 +483,36 @@
 const API = '/api';
 
 let TOPIC_DEFS = [];
+let currentView = 'foryou';
+let forYouCursor = null;
+let forYouLoading = false;
+
+// --- View switching ---
+
+function switchView(view) {
+  currentView = view;
+  document.body.className = `view-${view}`;
+  document.getElementById('viewForYou').classList.toggle('active', view === 'foryou');
+  document.getElementById('viewClassic').classList.toggle('active', view === 'classic');
+  if (view === 'foryou') {
+    forYouCursor = null;
+    loadForYouArticles(true);
+  } else {
+    loadClassicArticles();
+  }
+}
+
+// --- Shared ---
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
 
 async function loadSections() {
   const res = await fetch(`${API}/sections`);
   TOPIC_DEFS = await res.json();
-  // Populate section picker for add-feed
   const sel = document.getElementById('feedSection');
   sel.innerHTML = '';
   for (const s of TOPIC_DEFS) {
@@ -386,12 +524,8 @@ async function loadSections() {
   }
 }
 
-function classifyArticle(article) {
-  return article.feed_category || 'Uncategorized';
-}
-
 function getTopicDef(name) {
-  return TOPIC_DEFS.find(d => d.name === name) || { name, icon: '\u{1F4C4}', color: '#71717a', match: [] };
+  return TOPIC_DEFS.find(d => d.name.toLowerCase() === name.toLowerCase()) || { name, icon: '', color: '#71717a', match: [] };
 }
 
 async function loadStats() {
@@ -416,12 +550,6 @@ async function loadFeeds() {
   });
 }
 
-function scorePillClass(val) {
-  if (val >= 7) return 'high';
-  if (val >= 4) return 'mid';
-  return 'low';
-}
-
 function formatDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -435,90 +563,10 @@ function formatDate(iso) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function renderCard(a) {
-  const s = a.score;
-  return `
-    <div class="article-card" data-id="${a.id}">
-      <div class="card-title">
-        <a href="${a.url}" target="_blank" rel="noopener">${a.title || 'Untitled'}</a>
-      </div>
-      ${s ? `
-      <div class="card-scores">
-        <span class="score-pill ${scorePillClass(s.relevance)}">R${s.relevance}</span>
-        <span class="score-pill ${scorePillClass(s.significance)}">S${s.significance}</span>
-      </div>` : ''}
-      ${s && s.summary ? `<div class="card-summary">${s.summary}</div>` : ''}
-      <div class="card-footer">
-        <div class="card-meta">
-          <span class="source-tag">${a.feed_title}</span>
-          <span class="date-text">${formatDate(a.published_at)}</span>
-        </div>
-        <div class="feedback-btns">
-          <button onclick="sendFeedback(${a.id},'like',this)" title="Like">+</button>
-          <button onclick="sendFeedback(${a.id},'dislike',this)" title="Dislike">-</button>
-          <button onclick="sendFeedback(${a.id},'save',this)" title="Save">&#9733;</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderColumn(topicName, articles) {
-  const def = getTopicDef(topicName);
-  const isEmpty = articles.length === 0;
-  return `
-    <div class="column${isEmpty ? ' empty' : ''}">
-      <div class="column-header">
-        <div class="col-icon" style="background:${def.color}22;color:${def.color}">${def.icon}</div>
-        <span class="col-name">${topicName}</span>
-        <span class="col-count">${articles.length}</span>
-      </div>
-      <div class="column-body">
-        ${isEmpty ? '<div class="empty-state">No articles</div>' : articles.map(renderCard).join('')}
-      </div>
-    </div>
-  `;
-}
-
-async function loadArticles() {
-  const board = document.getElementById('board');
-  board.innerHTML = '<div class="loading">Loading...</div>';
-
-  const minScore = document.getElementById('minScore').value;
-  const feedId = document.getElementById('feedFilter').value;
-
-  let url = `${API}/articles?limit=100&scored_only=true`;
-  if (minScore > 0) url += `&min_score=${minScore}`;
-  if (feedId) url += `&feed_id=${feedId}`;
-
-  const res = await fetch(url);
-  const articles = await res.json();
-
-  // Group by topic
-  const groups = {};
-  for (const a of articles) {
-    const topic = classifyArticle(a);
-    if (!groups[topic]) groups[topic] = [];
-    groups[topic].push(a);
-  }
-
-  // Sort columns by TOPIC_DEFS order, Other last; skip empty
-  const orderedNames = TOPIC_DEFS.map(d => d.name);
-  const sortedTopics = Object.keys(groups).sort((a, b) => {
-    const ia = orderedNames.indexOf(a);
-    const ib = orderedNames.indexOf(b);
-    if (ia === -1 && ib === -1) return 0;
-    if (ia === -1) return 1;
-    if (ib === -1) return -1;
-    return ia - ib;
-  });
-
-  if (sortedTopics.length === 0) {
-    board.innerHTML = '<div class="empty-state"><h2>No articles found</h2><p>Try lowering the min score.</p></div>';
-    return;
-  }
-
-  board.innerHTML = sortedTopics.map(t => renderColumn(t, groups[t])).join('');
+function scorePillClass(val) {
+  if (val >= 7) return 'high';
+  if (val >= 4) return 'mid';
+  return 'low';
 }
 
 async function sendFeedback(articleId, action, btn) {
@@ -537,6 +585,186 @@ function setStatus(msg) {
   document.getElementById('actionStatus').textContent = msg;
 }
 
+// --- For You view ---
+
+function renderForYouCard(a) {
+  const s = a.score;
+  const topicChips = (s && s.topics) ? s.topics.map(t => {
+    const def = getTopicDef(t);
+    return `<span class="topic-chip" style="background:${def.color}22;color:${def.color}">${escapeHtml(t)}</span>`;
+  }).join('') : '';
+
+  return `
+    <div class="article-card" data-id="${a.id}">
+      <div class="card-title">
+        <a href="${encodeURI(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.title || 'Untitled')}</a>
+      </div>
+      ${s && s.summary ? `<div class="card-summary">${escapeHtml(s.summary)}</div>` : ''}
+      ${topicChips ? `<div class="card-topics">${topicChips}</div>` : ''}
+      <div class="card-footer">
+        <div class="card-meta">
+          <span class="source-tag">${escapeHtml(a.feed_title)}</span>
+          <span class="date-text">${formatDate(a.published_at)}</span>
+        </div>
+        <div class="feedback-btns">
+          <button onclick="sendFeedback(${a.id},'like',this)" title="Like">+</button>
+          <button onclick="sendFeedback(${a.id},'dislike',this)" title="Dislike">-</button>
+          <button onclick="sendFeedback(${a.id},'save',this)" title="Save">&#9733;</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadForYouArticles(reset = false) {
+  if (forYouLoading) return;
+  forYouLoading = true;
+
+  const inner = document.getElementById('feedInner');
+  if (reset) {
+    forYouCursor = null;
+    inner.innerHTML = '<div class="loading">Loading...</div>';
+  }
+
+  let url = `${API}/articles?view=foryou&limit=20`;
+  if (forYouCursor) url += `&cursor=${forYouCursor}`;
+
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (reset) inner.innerHTML = '';
+
+    if (data.articles.length === 0 && reset) {
+      inner.innerHTML = '<div class="empty-state"><h2>Your interests are set!</h2><p>Fetching articles...</p></div>';
+      forYouLoading = false;
+      return;
+    }
+
+    inner.querySelectorAll('.load-more').forEach(el => el.remove());
+
+    for (const a of data.articles) {
+      inner.insertAdjacentHTML('beforeend', renderForYouCard(a));
+    }
+
+    forYouCursor = data.next_cursor;
+
+    if (forYouCursor) {
+      inner.insertAdjacentHTML('beforeend', '<div class="load-more"><button onclick="loadForYouArticles()">Load more</button></div>');
+    }
+  } catch (e) {
+    if (reset) inner.innerHTML = `<div class="empty-state">Failed to load: ${e.message}</div>`;
+  }
+
+  forYouLoading = false;
+}
+
+// Infinite scroll for For You
+document.addEventListener('DOMContentLoaded', () => {
+  const feed = document.getElementById('feed');
+  if (feed) {
+    feed.addEventListener('scroll', () => {
+      if (currentView !== 'foryou' || !forYouCursor || forYouLoading) return;
+      const { scrollTop, scrollHeight, clientHeight } = feed;
+      if (scrollTop + clientHeight >= scrollHeight - 200) {
+        loadForYouArticles();
+      }
+    });
+  }
+});
+
+// --- Classic (kanban) view ---
+
+function renderClassicCard(a) {
+  const s = a.score;
+  return `
+    <div class="article-card" data-id="${a.id}">
+      <div class="card-title">
+        <a href="${encodeURI(a.url)}" target="_blank" rel="noopener">${escapeHtml(a.title || 'Untitled')}</a>
+      </div>
+      ${s ? `
+      <div class="card-scores">
+        <span class="score-pill ${scorePillClass(s.relevance)}">R${s.relevance}</span>
+        <span class="score-pill ${scorePillClass(s.significance)}">S${s.significance}</span>
+      </div>` : ''}
+      ${s && s.summary ? `<div class="card-summary">${escapeHtml(s.summary)}</div>` : ''}
+      <div class="card-footer">
+        <div class="card-meta">
+          <span class="source-tag">${escapeHtml(a.feed_title)}</span>
+          <span class="date-text">${formatDate(a.published_at)}</span>
+        </div>
+        <div class="feedback-btns">
+          <button onclick="sendFeedback(${a.id},'like',this)" title="Like">+</button>
+          <button onclick="sendFeedback(${a.id},'dislike',this)" title="Dislike">-</button>
+          <button onclick="sendFeedback(${a.id},'save',this)" title="Save">&#9733;</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function classifyArticle(article) {
+  return article.feed_category || 'Uncategorized';
+}
+
+function renderColumn(topicName, articles) {
+  const def = getTopicDef(topicName);
+  const isEmpty = articles.length === 0;
+  return `
+    <div class="column${isEmpty ? ' empty' : ''}">
+      <div class="column-header">
+        <div class="col-icon" style="background:${def.color}22;color:${def.color}">${def.icon}</div>
+        <span class="col-name">${topicName}</span>
+        <span class="col-count">${articles.length}</span>
+      </div>
+      <div class="column-body">
+        ${isEmpty ? '<div class="empty-state">No articles</div>' : articles.map(renderClassicCard).join('')}
+      </div>
+    </div>
+  `;
+}
+
+async function loadClassicArticles() {
+  const board = document.getElementById('board');
+  board.innerHTML = '<div class="loading">Loading...</div>';
+
+  const minScore = document.getElementById('minScore').value;
+  const feedId = document.getElementById('feedFilter').value;
+
+  let url = `${API}/articles?limit=100&scored_only=true`;
+  if (minScore > 0) url += `&min_score=${minScore}`;
+  if (feedId) url += `&feed_id=${feedId}`;
+
+  const res = await fetch(url);
+  const articles = await res.json();
+
+  const groups = {};
+  for (const a of articles) {
+    const topic = classifyArticle(a);
+    if (!groups[topic]) groups[topic] = [];
+    groups[topic].push(a);
+  }
+
+  const orderedNames = TOPIC_DEFS.map(d => d.name);
+  const sortedTopics = Object.keys(groups).sort((a, b) => {
+    const ia = orderedNames.indexOf(a);
+    const ib = orderedNames.indexOf(b);
+    if (ia === -1 && ib === -1) return 0;
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+
+  if (sortedTopics.length === 0) {
+    board.innerHTML = '<div class="empty-state"><h2>No articles found</h2><p>Try lowering the min score.</p></div>';
+    return;
+  }
+
+  board.innerHTML = sortedTopics.map(t => renderColumn(t, groups[t])).join('');
+}
+
+// --- Actions ---
+
 async function doFetch() {
   const btn = document.getElementById('fetchBtn');
   btn.disabled = true;
@@ -551,7 +779,8 @@ async function doFetch() {
     if (data.score_error) msg += ' (score error)';
     setStatus(msg);
     loadStats();
-    loadArticles();
+    if (currentView === 'foryou') loadForYouArticles(true);
+    else loadClassicArticles();
   } catch (e) {
     setStatus('Failed: ' + e.message);
   } finally {
@@ -595,12 +824,10 @@ async function doAddSection() {
   const name = prompt('New section name:');
   if (!name || !name.trim()) return;
   const trimmed = name.trim();
-  // Check duplicate
   if (TOPIC_DEFS.some(d => d.name.toLowerCase() === trimmed.toLowerCase())) {
     setStatus('Section already exists');
     return;
   }
-  // Append new section and save
   const newSection = { name: trimmed, icon: '\u{1F4C2}', color: '#71717a', match: [], visible: true };
   const updated = [...TOPIC_DEFS, newSection];
   try {
@@ -612,7 +839,7 @@ async function doAddSection() {
     if (res.ok) {
       setStatus(`Section added: ${trimmed}`);
       await loadSections();
-      loadArticles();
+      if (currentView === 'classic') loadClassicArticles();
     } else {
       setStatus('Failed to add section');
     }
@@ -621,10 +848,12 @@ async function doAddSection() {
   }
 }
 
+// --- Init ---
+
 loadSections().then(() => {
   loadStats();
   loadFeeds();
-  loadArticles();
+  loadForYouArticles(true);
 });
 </script>
 </body>

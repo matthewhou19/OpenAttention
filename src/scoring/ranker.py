@@ -17,7 +17,7 @@ from src.db.models import Article, Score
 
 def compute_rank(article: Article, score: Score, interests: dict) -> float:
     """Compute composite rank for an article given its score and user interests."""
-    max_weight = _max_topic_weight(score.topics_list, interests)
+    max_weight = max_topic_weight(score.topics_list, interests)
 
     relevance_component = score.relevance * max_weight / 10
     significance_component = score.significance * 0.3
@@ -31,7 +31,7 @@ def compute_rank(article: Article, score: Score, interests: dict) -> float:
     return rank
 
 
-def _max_topic_weight(score_topics: list[str], interests: dict) -> float:
+def max_topic_weight(score_topics: list[str], interests: dict) -> float:
     """Find the highest matching topic weight from interests. Floor = 1.0."""
     if not score_topics:
         return 1.0
