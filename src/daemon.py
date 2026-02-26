@@ -34,7 +34,8 @@ def score_unscored(limit: int = 30) -> int:
         f"{batch}\n\n"
         "Return ONLY a valid JSON array. No markdown fences, no extra text. "
         'Each element: {"article_id": <id>, "relevance": <0-10>, '
-        '"significance": <0-10>, "summary": "<1-2 sentences>", '
+        '"significance": <0-10>, "confidence": <0.0-1.0>, '
+        '"summary": "<1-2 sentences>", '
         '"topics": ["tag1"], "reason": "<why>"}'
     )
 
@@ -78,12 +79,7 @@ def cleanup_articles(session) -> int:
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
 
     # Find exempt article IDs (have "save" or "like" feedback)
-    exempt_ids = (
-        session.query(Feedback.article_id)
-        .filter(Feedback.action.in_(["save", "like"]))
-        .distinct()
-        .all()
-    )
+    exempt_ids = session.query(Feedback.article_id).filter(Feedback.action.in_(["save", "like"])).distinct().all()
     exempt_set = {row[0] for row in exempt_ids}
 
     # Find old, non-archived articles
@@ -127,11 +123,7 @@ def check_rescore(session) -> None:
     delete scores for articles from the last 7 days so they get re-scored
     with the updated interest profile.
     """
-    pref = (
-        session.query(UserPreference)
-        .filter(UserPreference.key == "needs_rescore")
-        .first()
-    )
+    pref = session.query(UserPreference).filter(UserPreference.key == "needs_rescore").first()
     if pref is None:
         return
 
@@ -148,11 +140,7 @@ def check_rescore(session) -> None:
     # Delete scores for articles fetched within the last 7 days
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     recent_article_ids = select(Article.id).where(Article.fetched_at > cutoff)
-    deleted = (
-        session.query(Score)
-        .filter(Score.article_id.in_(recent_article_ids))
-        .delete(synchronize_session="fetch")
-    )
+    deleted = session.query(Score).filter(Score.article_id.in_(recent_article_ids)).delete(synchronize_session="fetch")
     if deleted > 0:
         session.commit()
         logger.info("Deleted %d scores for re-scoring", deleted)
@@ -214,7 +202,9 @@ def run_cycle() -> None:
 
     logger.info(
         "Cycle complete — fetched: %d, scored: %d, archived: %d",
-        fetched_total, scored, archived,
+        fetched_total,
+        scored,
+        archived,
     )
 
 

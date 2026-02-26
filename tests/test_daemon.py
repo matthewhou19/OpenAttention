@@ -23,15 +23,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from src.db.models import Article, Base, Feed, Feedback, Score, UserPreference
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def temp_db():
@@ -56,6 +56,7 @@ def temp_db():
 
     engine.dispose()
     import time
+
     time.sleep(0.1)
     for suffix in ("", "-wal", "-shm"):
         p = path + suffix
@@ -83,23 +84,23 @@ def seeded_db(db_session):
     db_session.flush()
 
     # Old article, no score (should be archived)
-    a1 = Article(feed_id=feed.id, url="https://example.com/1", title="Old No Score",
-                 published_at=old, fetched_at=old)
+    a1 = Article(feed_id=feed.id, url="https://example.com/1", title="Old No Score", published_at=old, fetched_at=old)
     # Old article, low rank (should be archived)
-    a2 = Article(feed_id=feed.id, url="https://example.com/2", title="Old Low Rank",
-                 published_at=old, fetched_at=old)
+    a2 = Article(feed_id=feed.id, url="https://example.com/2", title="Old Low Rank", published_at=old, fetched_at=old)
     # Old article, high rank (should NOT be archived)
-    a3 = Article(feed_id=feed.id, url="https://example.com/3", title="Old High Rank",
-                 published_at=old, fetched_at=old)
+    a3 = Article(feed_id=feed.id, url="https://example.com/3", title="Old High Rank", published_at=old, fetched_at=old)
     # Old article, low rank but saved/bookmarked (should NOT be archived)
-    a4 = Article(feed_id=feed.id, url="https://example.com/4", title="Old Saved",
-                 published_at=old, fetched_at=old)
+    a4 = Article(feed_id=feed.id, url="https://example.com/4", title="Old Saved", published_at=old, fetched_at=old)
     # Old article, low rank but liked (should NOT be archived)
-    a5 = Article(feed_id=feed.id, url="https://example.com/5", title="Old Liked",
-                 published_at=old, fetched_at=old)
+    a5 = Article(feed_id=feed.id, url="https://example.com/5", title="Old Liked", published_at=old, fetched_at=old)
     # Recent article, low rank (should NOT be archived — too recent)
-    a6 = Article(feed_id=feed.id, url="https://example.com/6", title="Recent Low Rank",
-                 published_at=now - timedelta(days=2), fetched_at=now - timedelta(days=2))
+    a6 = Article(
+        feed_id=feed.id,
+        url="https://example.com/6",
+        title="Recent Low Rank",
+        published_at=now - timedelta(days=2),
+        fetched_at=now - timedelta(days=2),
+    )
 
     db_session.add_all([a1, a2, a3, a4, a5, a6])
     db_session.flush()
@@ -119,7 +120,12 @@ def seeded_db(db_session):
 
     return {
         "feed": feed,
-        "a1": a1, "a2": a2, "a3": a3, "a4": a4, "a5": a5, "a6": a6,
+        "a1": a1,
+        "a2": a2,
+        "a3": a3,
+        "a4": a4,
+        "a5": a5,
+        "a6": a6,
         "session": db_session,
     }
 
@@ -128,8 +134,10 @@ def seeded_db(db_session):
 # AC-1a: CLI command exists with --interval option
 # ---------------------------------------------------------------------------
 
+
 def test_daemon_command_exists_with_interval_option():
     from cli import cli
+
     runner = CliRunner()
     result = runner.invoke(cli, ["daemon", "--help"])
     assert result.exit_code == 0, f"daemon --help failed: {result.output}"
@@ -140,8 +148,10 @@ def test_daemon_command_exists_with_interval_option():
 # AC-1b: Custom interval accepted
 # ---------------------------------------------------------------------------
 
+
 def test_daemon_accepts_custom_interval():
     from cli import cli
+
     runner = CliRunner()
     with patch("src.daemon.run_daemon") as mock_run:
         # daemon will call run_daemon — we mock it to prevent infinite loop
@@ -156,15 +166,18 @@ def test_daemon_accepts_custom_interval():
 # AC-2a: Cycle calls fetch_all and logs results
 # ---------------------------------------------------------------------------
 
+
 def test_cycle_calls_fetch_all(temp_db, caplog):
     from src.daemon import run_cycle
 
     mock_session_factory = temp_db["session_factory"]
-    with patch("src.daemon.fetch_all", return_value={"Test Feed": 5}) as mock_fetch, \
-         patch("src.daemon.score_unscored", return_value=0), \
-         patch("src.daemon.cleanup_articles"), \
-         patch("src.daemon.check_rescore"), \
-         patch("src.daemon.get_session", side_effect=mock_session_factory):
+    with (
+        patch("src.daemon.fetch_all", return_value={"Test Feed": 5}) as mock_fetch,
+        patch("src.daemon.score_unscored", return_value=0),
+        patch("src.daemon.cleanup_articles"),
+        patch("src.daemon.check_rescore"),
+        patch("src.daemon.get_session", side_effect=mock_session_factory),
+    ):
         with caplog.at_level(logging.INFO, logger="src.daemon"):
             run_cycle()
     mock_fetch.assert_called_once()
@@ -174,15 +187,18 @@ def test_cycle_calls_fetch_all(temp_db, caplog):
 # AC-2b: Mixed fetch results logged per feed
 # ---------------------------------------------------------------------------
 
+
 def test_cycle_logs_per_feed_results(temp_db, caplog):
     from src.daemon import run_cycle
 
     results = {"Good Feed": 3, "Bad Feed": -1}
-    with patch("src.daemon.fetch_all", return_value=results), \
-         patch("src.daemon.score_unscored", return_value=0), \
-         patch("src.daemon.cleanup_articles"), \
-         patch("src.daemon.check_rescore"), \
-         patch("src.daemon.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.daemon.fetch_all", return_value=results),
+        patch("src.daemon.score_unscored", return_value=0),
+        patch("src.daemon.cleanup_articles"),
+        patch("src.daemon.check_rescore"),
+        patch("src.daemon.get_session", side_effect=temp_db["session_factory"]),
+    ):
         with caplog.at_level(logging.INFO, logger="src.daemon"):
             run_cycle()
 
@@ -195,14 +211,17 @@ def test_cycle_logs_per_feed_results(temp_db, caplog):
 # AC-3a: Unscored articles trigger Claude subprocess
 # ---------------------------------------------------------------------------
 
+
 def test_cycle_calls_scoring_when_unscored_exist(temp_db):
     from src.daemon import run_cycle
 
-    with patch("src.daemon.fetch_all", return_value={}), \
-         patch("src.daemon.score_unscored", return_value=5) as mock_score, \
-         patch("src.daemon.cleanup_articles"), \
-         patch("src.daemon.check_rescore"), \
-         patch("src.daemon.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.daemon.fetch_all", return_value={}),
+        patch("src.daemon.score_unscored", return_value=5) as mock_score,
+        patch("src.daemon.cleanup_articles"),
+        patch("src.daemon.check_rescore"),
+        patch("src.daemon.get_session", side_effect=temp_db["session_factory"]),
+    ):
         run_cycle()
     mock_score.assert_called_once()
 
@@ -211,24 +230,30 @@ def test_cycle_calls_scoring_when_unscored_exist(temp_db):
 # AC-3b: Claude returns valid JSON → write_scores called
 # ---------------------------------------------------------------------------
 
+
 def test_score_unscored_calls_write_scores_on_valid_json():
     from src.daemon import score_unscored
 
-    fake_batch = json.dumps({
-        "interests": {},
-        "articles": [{"id": 1, "title": "Test"}],
-        "count": 1,
-        "instructions": "...",
-    })
-    fake_scores = json.dumps([{"article_id": 1, "relevance": 7, "significance": 5,
-                               "summary": "s", "topics": ["ai"], "reason": "r"}])
+    fake_batch = json.dumps(
+        {
+            "interests": {},
+            "articles": [{"id": 1, "title": "Test"}],
+            "count": 1,
+            "instructions": "...",
+        }
+    )
+    fake_scores = json.dumps(
+        [{"article_id": 1, "relevance": 7, "significance": 5, "summary": "s", "topics": ["ai"], "reason": "r"}]
+    )
     mock_result = MagicMock()
     mock_result.returncode = 0
     mock_result.stdout = fake_scores
 
-    with patch("src.daemon.prepare_scoring_prompt", return_value=fake_batch), \
-         patch("subprocess.run", return_value=mock_result), \
-         patch("src.daemon.write_scores", return_value=1) as mock_write:
+    with (
+        patch("src.daemon.prepare_scoring_prompt", return_value=fake_batch),
+        patch("subprocess.run", return_value=mock_result),
+        patch("src.daemon.write_scores", return_value=1) as mock_write,
+    ):
         count = score_unscored()
 
     assert count == 1
@@ -239,12 +264,12 @@ def test_score_unscored_calls_write_scores_on_valid_json():
 # AC-3c: No unscored articles → scoring not called
 # ---------------------------------------------------------------------------
 
+
 def test_score_unscored_skips_when_no_articles():
     from src.daemon import score_unscored
 
     no_articles = json.dumps({"status": "no_unscored_articles", "count": 0})
-    with patch("src.daemon.prepare_scoring_prompt", return_value=no_articles), \
-         patch("subprocess.run") as mock_sub:
+    with patch("src.daemon.prepare_scoring_prompt", return_value=no_articles), patch("subprocess.run") as mock_sub:
         count = score_unscored()
 
     assert count == 0
@@ -254,6 +279,7 @@ def test_score_unscored_skips_when_no_articles():
 # ---------------------------------------------------------------------------
 # AC-4a: Old article, no score → archived
 # ---------------------------------------------------------------------------
+
 
 def test_cleanup_archives_old_unscored(seeded_db):
     from src.daemon import cleanup_articles
@@ -269,6 +295,7 @@ def test_cleanup_archives_old_unscored(seeded_db):
 # AC-4b: Old article, low rank → archived
 # ---------------------------------------------------------------------------
 
+
 def test_cleanup_archives_old_low_rank(seeded_db):
     from src.daemon import cleanup_articles
 
@@ -281,6 +308,7 @@ def test_cleanup_archives_old_low_rank(seeded_db):
 # ---------------------------------------------------------------------------
 # AC-4c: Old article, high rank → NOT archived
 # ---------------------------------------------------------------------------
+
 
 def test_cleanup_keeps_old_high_rank(seeded_db):
     from src.daemon import cleanup_articles
@@ -295,6 +323,7 @@ def test_cleanup_keeps_old_high_rank(seeded_db):
 # AC-4d: Old article, saved → NOT archived
 # ---------------------------------------------------------------------------
 
+
 def test_cleanup_keeps_saved_articles(seeded_db):
     from src.daemon import cleanup_articles
 
@@ -307,6 +336,7 @@ def test_cleanup_keeps_saved_articles(seeded_db):
 # ---------------------------------------------------------------------------
 # AC-4e: Old article, liked → NOT archived
 # ---------------------------------------------------------------------------
+
 
 def test_cleanup_keeps_liked_articles(seeded_db):
     from src.daemon import cleanup_articles
@@ -321,6 +351,7 @@ def test_cleanup_keeps_liked_articles(seeded_db):
 # AC-4f: Recent article, low rank → NOT archived
 # ---------------------------------------------------------------------------
 
+
 def test_cleanup_keeps_recent_articles(seeded_db):
     from src.daemon import cleanup_articles
 
@@ -334,14 +365,17 @@ def test_cleanup_keeps_recent_articles(seeded_db):
 # AC-5a: fetch_all raises → cycle survives
 # ---------------------------------------------------------------------------
 
+
 def test_cycle_survives_fetch_exception(temp_db, caplog):
     from src.daemon import run_cycle
 
-    with patch("src.daemon.fetch_all", side_effect=RuntimeError("Network down")), \
-         patch("src.daemon.score_unscored", return_value=0), \
-         patch("src.daemon.cleanup_articles", return_value=0), \
-         patch("src.daemon.check_rescore"), \
-         patch("src.daemon.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.daemon.fetch_all", side_effect=RuntimeError("Network down")),
+        patch("src.daemon.score_unscored", return_value=0),
+        patch("src.daemon.cleanup_articles", return_value=0),
+        patch("src.daemon.check_rescore"),
+        patch("src.daemon.get_session", side_effect=temp_db["session_factory"]),
+    ):
         with caplog.at_level(logging.ERROR, logger="src.daemon"):
             # Should NOT raise
             run_cycle()
@@ -353,14 +387,17 @@ def test_cycle_survives_fetch_exception(temp_db, caplog):
 # AC-5b: write_scores raises → cycle survives
 # ---------------------------------------------------------------------------
 
+
 def test_cycle_survives_scoring_exception(temp_db, caplog):
     from src.daemon import run_cycle
 
-    with patch("src.daemon.fetch_all", return_value={}), \
-         patch("src.daemon.score_unscored", side_effect=Exception("JSON parse fail")), \
-         patch("src.daemon.cleanup_articles", return_value=0), \
-         patch("src.daemon.check_rescore"), \
-         patch("src.daemon.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.daemon.fetch_all", return_value={}),
+        patch("src.daemon.score_unscored", side_effect=Exception("JSON parse fail")),
+        patch("src.daemon.cleanup_articles", return_value=0),
+        patch("src.daemon.check_rescore"),
+        patch("src.daemon.get_session", side_effect=temp_db["session_factory"]),
+    ):
         with caplog.at_level(logging.ERROR, logger="src.daemon"):
             run_cycle()
 
@@ -371,15 +408,18 @@ def test_cycle_survives_scoring_exception(temp_db, caplog):
 # AC-6: Single feed error (-1) logged, cycle continues
 # ---------------------------------------------------------------------------
 
+
 def test_cycle_logs_feed_error(temp_db, caplog):
     from src.daemon import run_cycle
 
     results = {"OK Feed": 2, "Broken Feed": -1}
-    with patch("src.daemon.fetch_all", return_value=results), \
-         patch("src.daemon.score_unscored", return_value=0), \
-         patch("src.daemon.cleanup_articles", return_value=0), \
-         patch("src.daemon.check_rescore"), \
-         patch("src.daemon.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.daemon.fetch_all", return_value=results),
+        patch("src.daemon.score_unscored", return_value=0),
+        patch("src.daemon.cleanup_articles", return_value=0),
+        patch("src.daemon.check_rescore"),
+        patch("src.daemon.get_session", side_effect=temp_db["session_factory"]),
+    ):
         with caplog.at_level(logging.WARNING, logger="src.daemon"):
             run_cycle()
 
@@ -390,17 +430,22 @@ def test_cycle_logs_feed_error(temp_db, caplog):
 # AC-7a: TimeoutExpired → returns 0, error logged
 # ---------------------------------------------------------------------------
 
+
 def test_score_unscored_handles_timeout(caplog):
     from src.daemon import score_unscored
 
-    fake_batch = json.dumps({
-        "interests": {},
-        "articles": [{"id": 1, "title": "Test"}],
-        "count": 1,
-        "instructions": "...",
-    })
-    with patch("src.daemon.prepare_scoring_prompt", return_value=fake_batch), \
-         patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=180)):
+    fake_batch = json.dumps(
+        {
+            "interests": {},
+            "articles": [{"id": 1, "title": "Test"}],
+            "count": 1,
+            "instructions": "...",
+        }
+    )
+    with (
+        patch("src.daemon.prepare_scoring_prompt", return_value=fake_batch),
+        patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=180)),
+    ):
         with caplog.at_level(logging.ERROR, logger="src.daemon"):
             count = score_unscored()
 
@@ -412,17 +457,22 @@ def test_score_unscored_handles_timeout(caplog):
 # AC-7b: FileNotFoundError → returns 0, error logged
 # ---------------------------------------------------------------------------
 
+
 def test_score_unscored_handles_missing_claude(caplog):
     from src.daemon import score_unscored
 
-    fake_batch = json.dumps({
-        "interests": {},
-        "articles": [{"id": 1, "title": "Test"}],
-        "count": 1,
-        "instructions": "...",
-    })
-    with patch("src.daemon.prepare_scoring_prompt", return_value=fake_batch), \
-         patch("subprocess.run", side_effect=FileNotFoundError("claude not found")):
+    fake_batch = json.dumps(
+        {
+            "interests": {},
+            "articles": [{"id": 1, "title": "Test"}],
+            "count": 1,
+            "instructions": "...",
+        }
+    )
+    with (
+        patch("src.daemon.prepare_scoring_prompt", return_value=fake_batch),
+        patch("subprocess.run", side_effect=FileNotFoundError("claude not found")),
+    ):
         with caplog.at_level(logging.ERROR, logger="src.daemon"):
             count = score_unscored()
 
@@ -433,6 +483,7 @@ def test_score_unscored_handles_missing_claude(caplog):
 # ---------------------------------------------------------------------------
 # AC-8a: needs_rescore=true → re-scores and clears flag
 # ---------------------------------------------------------------------------
+
 
 def test_check_rescore_when_flag_set(temp_db):
     from src.daemon import check_rescore
@@ -455,6 +506,7 @@ def test_check_rescore_when_flag_set(temp_db):
 # AC-8b: needs_rescore key missing → no rescore, no error
 # ---------------------------------------------------------------------------
 
+
 def test_check_rescore_when_flag_missing(temp_db):
     from src.daemon import check_rescore
 
@@ -471,14 +523,17 @@ def test_check_rescore_when_flag_missing(temp_db):
 # AC-9: Cycle logs summary with fetched/scored/archived counts
 # ---------------------------------------------------------------------------
 
+
 def test_cycle_logs_summary(temp_db, caplog):
     from src.daemon import run_cycle
 
-    with patch("src.daemon.fetch_all", return_value={"Feed A": 4}), \
-         patch("src.daemon.score_unscored", return_value=3), \
-         patch("src.daemon.cleanup_articles", return_value=2), \
-         patch("src.daemon.check_rescore"), \
-         patch("src.daemon.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.daemon.fetch_all", return_value={"Feed A": 4}),
+        patch("src.daemon.score_unscored", return_value=3),
+        patch("src.daemon.cleanup_articles", return_value=2),
+        patch("src.daemon.check_rescore"),
+        patch("src.daemon.get_session", side_effect=temp_db["session_factory"]),
+    ):
         with caplog.at_level(logging.INFO, logger="src.daemon"):
             run_cycle()
 
@@ -492,12 +547,15 @@ def test_cycle_logs_summary(temp_db, caplog):
 # AC-10: Daemon calls init_db() at startup
 # ---------------------------------------------------------------------------
 
+
 def test_daemon_calls_init_db_at_startup():
     from src.daemon import run_daemon
 
-    with patch("src.daemon.init_db") as mock_init, \
-         patch("src.daemon.run_cycle"), \
-         patch("time.sleep", side_effect=KeyboardInterrupt):
+    with (
+        patch("src.daemon.init_db") as mock_init,
+        patch("src.daemon.run_cycle"),
+        patch("time.sleep", side_effect=KeyboardInterrupt),
+    ):
         try:
             run_daemon(interval=3600)
         except KeyboardInterrupt:

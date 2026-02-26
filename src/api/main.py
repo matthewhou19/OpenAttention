@@ -110,7 +110,8 @@ def api_fetch():
             f"{batch}\n\n"
             "Return ONLY a valid JSON array. No markdown fences, no extra text. "
             'Each element: {"article_id": <id>, "relevance": <0-10>, '
-            '"significance": <0-10>, "summary": "<1-2 sentences>", '
+            '"significance": <0-10>, "confidence": <0.0-1.0>, '
+            '"summary": "<1-2 sentences>", '
             '"topics": ["tag1"], "reason": "<why>"}'
         )
         try:
@@ -155,7 +156,8 @@ def api_score(limit: int = 20):
         f"{batch}\n\n"
         "Return ONLY a valid JSON array. No markdown fences, no extra text. "
         'Each element: {"article_id": <id>, "relevance": <0-10>, '
-        '"significance": <0-10>, "summary": "<1-2 sentences>", '
+        '"significance": <0-10>, "confidence": <0.0-1.0>, '
+        '"summary": "<1-2 sentences>", '
         '"topics": ["tag1"], "reason": "<why>"}'
     )
 

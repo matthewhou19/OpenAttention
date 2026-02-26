@@ -27,6 +27,7 @@ from src.db.models import Article, Base, Feed, Score, UserPreference
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def temp_db():
     """Temporary SQLite DB with all tables."""
@@ -49,6 +50,7 @@ def temp_db():
 
     engine.dispose()
     import time
+
     time.sleep(0.1)
     for suffix in ("", "-wal", "-shm"):
         p = path + suffix
@@ -92,18 +94,27 @@ def seeded_rescore_db(db_session):
 
     # Recent article (2 days ago) — should be re-scored
     a_recent = Article(
-        feed_id=feed.id, url="https://example.com/recent", title="Recent Article",
-        published_at=now - timedelta(days=2), fetched_at=now - timedelta(days=2),
+        feed_id=feed.id,
+        url="https://example.com/recent",
+        title="Recent Article",
+        published_at=now - timedelta(days=2),
+        fetched_at=now - timedelta(days=2),
     )
     # Old article (10 days ago) — should NOT be re-scored
     a_old = Article(
-        feed_id=feed.id, url="https://example.com/old", title="Old Article",
-        published_at=now - timedelta(days=10), fetched_at=now - timedelta(days=10),
+        feed_id=feed.id,
+        url="https://example.com/old",
+        title="Old Article",
+        published_at=now - timedelta(days=10),
+        fetched_at=now - timedelta(days=10),
     )
     # Borderline article (exactly 7 days ago) — should NOT be re-scored (> 7 days cutoff)
     a_border = Article(
-        feed_id=feed.id, url="https://example.com/border", title="Borderline Article",
-        published_at=now - timedelta(days=7), fetched_at=now - timedelta(days=7),
+        feed_id=feed.id,
+        url="https://example.com/border",
+        title="Borderline Article",
+        published_at=now - timedelta(days=7),
+        fetched_at=now - timedelta(days=7),
     )
 
     db_session.add_all([a_recent, a_old, a_border])
@@ -128,6 +139,7 @@ def seeded_rescore_db(db_session):
 # AC-1a: load_interests — valid file
 # ---------------------------------------------------------------------------
 
+
 def test_load_interests_returns_parsed_dict(temp_interests):
     from src.interests.manager import load_interests
 
@@ -144,6 +156,7 @@ def test_load_interests_returns_parsed_dict(temp_interests):
 # AC-1b: load_interests — missing file
 # ---------------------------------------------------------------------------
 
+
 def test_load_interests_returns_default_when_missing(tmp_path):
     from src.interests.manager import load_interests
 
@@ -158,16 +171,17 @@ def test_load_interests_returns_default_when_missing(tmp_path):
 # AC-2a: save_interests — topic added → flag set
 # ---------------------------------------------------------------------------
 
+
 def test_save_interests_sets_flag_on_topic_added(temp_interests, temp_db):
     from src.interests.manager import save_interests
 
     new_profile = temp_interests["profile"].copy()
-    new_profile["topics"] = list(new_profile["topics"]) + [
-        {"name": "Rust", "weight": 6, "keywords": ["rust", "cargo"]}
-    ]
+    new_profile["topics"] = list(new_profile["topics"]) + [{"name": "Rust", "weight": 6, "keywords": ["rust", "cargo"]}]
 
-    with patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]), \
-         patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]),
+        patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]),
+    ):
         save_interests(new_profile)
 
     session = temp_db["session_factory"]()
@@ -181,6 +195,7 @@ def test_save_interests_sets_flag_on_topic_added(temp_interests, temp_db):
 # AC-2b: save_interests — topic removed → flag set
 # ---------------------------------------------------------------------------
 
+
 def test_save_interests_sets_flag_on_topic_removed(temp_interests, temp_db):
     from src.interests.manager import save_interests
 
@@ -188,8 +203,10 @@ def test_save_interests_sets_flag_on_topic_removed(temp_interests, temp_db):
     # Remove "Startups"
     new_profile["topics"] = [t for t in new_profile["topics"] if t["name"] != "Startups"]
 
-    with patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]), \
-         patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]),
+        patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]),
+    ):
         save_interests(new_profile)
 
     session = temp_db["session_factory"]()
@@ -203,6 +220,7 @@ def test_save_interests_sets_flag_on_topic_removed(temp_interests, temp_db):
 # AC-2c: save_interests — add + remove simultaneously → flag set
 # ---------------------------------------------------------------------------
 
+
 def test_save_interests_sets_flag_on_add_and_remove(temp_interests, temp_db):
     from src.interests.manager import save_interests
 
@@ -211,8 +229,10 @@ def test_save_interests_sets_flag_on_add_and_remove(temp_interests, temp_db):
     new_profile["topics"] = [t for t in new_profile["topics"] if t["name"] != "Startups"]
     new_profile["topics"].append({"name": "Rust", "weight": 6, "keywords": ["rust"]})
 
-    with patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]), \
-         patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]),
+        patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]),
+    ):
         save_interests(new_profile)
 
     session = temp_db["session_factory"]()
@@ -226,6 +246,7 @@ def test_save_interests_sets_flag_on_add_and_remove(temp_interests, temp_db):
 # AC-3a: save_interests — weight change only → flag NOT set
 # ---------------------------------------------------------------------------
 
+
 def test_save_interests_no_flag_on_weight_change(temp_interests, temp_db):
     from src.interests.manager import save_interests
 
@@ -233,8 +254,10 @@ def test_save_interests_no_flag_on_weight_change(temp_interests, temp_db):
     new_profile["topics"] = [dict(t) for t in new_profile["topics"]]
     new_profile["topics"][0]["weight"] = 8  # AI/ML 10 → 8
 
-    with patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]), \
-         patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]),
+        patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]),
+    ):
         save_interests(new_profile)
 
     session = temp_db["session_factory"]()
@@ -249,6 +272,7 @@ def test_save_interests_no_flag_on_weight_change(temp_interests, temp_db):
 # AC-3b: save_interests — keyword change only → flag NOT set
 # ---------------------------------------------------------------------------
 
+
 def test_save_interests_no_flag_on_keyword_change(temp_interests, temp_db):
     from src.interests.manager import save_interests
 
@@ -256,8 +280,10 @@ def test_save_interests_no_flag_on_keyword_change(temp_interests, temp_db):
     new_profile["topics"] = [dict(t) for t in new_profile["topics"]]
     new_profile["topics"][0]["keywords"] = ["LLM", "transformer", "GPT"]
 
-    with patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]), \
-         patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]):
+    with (
+        patch("src.interests.manager.INTERESTS_PATH", temp_interests["path"]),
+        patch("src.interests.manager.get_session", side_effect=temp_db["session_factory"]),
+    ):
         save_interests(new_profile)
 
     session = temp_db["session_factory"]()
@@ -270,6 +296,7 @@ def test_save_interests_no_flag_on_keyword_change(temp_interests, temp_db):
 # ---------------------------------------------------------------------------
 # AC-4a: check_rescore — flag set, recent scored articles → scores deleted, score_unscored called
 # ---------------------------------------------------------------------------
+
 
 def test_check_rescore_deletes_recent_scores_and_rescores(seeded_rescore_db, temp_db):
     from src.daemon import check_rescore
@@ -295,6 +322,7 @@ def test_check_rescore_deletes_recent_scores_and_rescores(seeded_rescore_db, tem
 # AC-4b: check_rescore — flag set, no recent articles → score_unscored still called
 # ---------------------------------------------------------------------------
 
+
 def test_check_rescore_no_recent_articles(temp_db):
     from src.daemon import check_rescore
 
@@ -313,6 +341,7 @@ def test_check_rescore_no_recent_articles(temp_db):
 # ---------------------------------------------------------------------------
 # AC-5a: check_rescore — old article scores untouched
 # ---------------------------------------------------------------------------
+
 
 def test_check_rescore_keeps_old_article_scores(seeded_rescore_db, temp_db):
     from src.daemon import check_rescore
@@ -340,6 +369,7 @@ def test_check_rescore_keeps_old_article_scores(seeded_rescore_db, temp_db):
 # AC-6a: check_rescore — flag cleared after rescore
 # ---------------------------------------------------------------------------
 
+
 def test_check_rescore_clears_flag(seeded_rescore_db, temp_db):
     from src.daemon import check_rescore
 
@@ -360,6 +390,7 @@ def test_check_rescore_clears_flag(seeded_rescore_db, temp_db):
 # AC-7a: check_rescore — flag is "false" → no action
 # ---------------------------------------------------------------------------
 
+
 def test_check_rescore_noop_when_flag_false(temp_db):
     from src.daemon import check_rescore
 
@@ -378,6 +409,7 @@ def test_check_rescore_noop_when_flag_false(temp_db):
 # ---------------------------------------------------------------------------
 # AC-7b: check_rescore — flag key missing → no action
 # ---------------------------------------------------------------------------
+
 
 def test_check_rescore_noop_when_flag_missing(temp_db):
     from src.daemon import check_rescore

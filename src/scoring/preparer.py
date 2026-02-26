@@ -60,6 +60,7 @@ def prepare_scoring_prompt(limit: int = 20) -> str:
             "instructions": (
                 "Score each article. For each, return: "
                 "article_id, relevance (0-10), significance (0-10), "
+                "confidence (0.0-1.0, how confident you are in the topic tags), "
                 "summary (1-2 sentences), topics (list of tags), "
                 "reason (why this score). Output as a JSON array."
             ),
@@ -96,6 +97,7 @@ def write_scores(scores_json: str) -> int:
                 existing.summary = s.get("summary", "")
                 existing.topics = json.dumps(s.get("topics", []))
                 existing.reason = s.get("reason", "")
+                existing.confidence = float(s.get("confidence", 1.0))
                 existing.scored_at = datetime.now(timezone.utc)
             else:
                 score = Score(
@@ -105,6 +107,7 @@ def write_scores(scores_json: str) -> int:
                     summary=s.get("summary", ""),
                     topics=json.dumps(s.get("topics", [])),
                     reason=s.get("reason", ""),
+                    confidence=float(s.get("confidence", 1.0)),
                 )
                 session.add(score)
             written += 1

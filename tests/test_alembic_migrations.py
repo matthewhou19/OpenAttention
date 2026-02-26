@@ -361,9 +361,7 @@ def test_session_engine_has_timeout():
     """The engine from src.db.session should have connect_args with timeout=15."""
     with open("src/db/session.py") as f:
         source = f.read()
-    assert '"timeout": 15' in source or "'timeout': 15" in source, (
-        "session.py should have connect_args with timeout=15"
-    )
+    assert '"timeout": 15' in source or "'timeout': 15" in source, "session.py should have connect_args with timeout=15"
 
 
 # ---------------------------------------------------------------------------
