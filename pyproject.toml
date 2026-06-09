@@ -18,6 +18,12 @@ dependencies = [
 [project.scripts]
 rss = "cli:cli"
 
+[tool.setuptools]
+py-modules = ["cli"]
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
